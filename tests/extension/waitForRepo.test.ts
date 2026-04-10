@@ -16,7 +16,7 @@ function makeFakeWorkspace(folderPaths: string[] = []): {
   triggerFolderChange: () => void;
 } {
   let gitCreateHandler: (() => void) | null = null;
-  let folderChangeHandler: (() => void) | null = null;
+  let folderChangeHandler: ((e: vscode.WorkspaceFoldersChangeEvent) => void) | null = null;
 
   const gitWatcher = {
     onDidCreate(handler: () => void) {
@@ -29,7 +29,7 @@ function makeFakeWorkspace(folderPaths: string[] = []): {
   const workspace: WorkspaceApi = {
     workspaceFolders: folderPaths.map((p) => ({ uri: { fsPath: p } }) as vscode.WorkspaceFolder),
     createFileSystemWatcher: vi.fn(() => gitWatcher as unknown as vscode.FileSystemWatcher),
-    onDidChangeWorkspaceFolders(handler: () => void) {
+    onDidChangeWorkspaceFolders(handler: (e: vscode.WorkspaceFoldersChangeEvent) => void) {
       folderChangeHandler = handler;
       return { dispose: vi.fn() };
     }
@@ -39,7 +39,7 @@ function makeFakeWorkspace(folderPaths: string[] = []): {
     workspace,
     gitWatcher,
     triggerGitCreate: () => gitCreateHandler?.(),
-    triggerFolderChange: () => folderChangeHandler?.()
+    triggerFolderChange: () => folderChangeHandler?.({} as vscode.WorkspaceFoldersChangeEvent)
   };
 }
 
