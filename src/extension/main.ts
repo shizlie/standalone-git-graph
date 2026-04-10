@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { findGitRepos } from "@/backend/utils/repoSearch";
+import { findGitRepos } from "@/backend/queries/repoSearch";
 import { config } from "@/config";
 import { bootstrap } from "@/extension/bootstrap";
 
