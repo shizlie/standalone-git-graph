@@ -1,14 +1,13 @@
-import { mkdtempSync, rmdirSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as vscode from "vscode";
 
-vi.mock("@/backend/queries/repoSearch");
 vi.mock("@/extension/bootstrap");
 
-import { findGitRepos } from "@/backend/queries/repoSearch";
 import { bootstrap } from "@/extension/bootstrap";
 import { waitForRepo } from "@/extension/waitForRepo";
 import type { WorkspaceApi } from "@/extension/waitForRepo";
@@ -53,13 +52,13 @@ let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "ngg-waitForRepo-test-"));
-  vi.mocked(findGitRepos).mockResolvedValue([]);
   vi.mocked(bootstrap).mockReturnValue(undefined);
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.clearAllMocks();
-  rmdirSync(tmpDir);
+  rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe("waitForRepo", () => {
@@ -70,8 +69,8 @@ describe("waitForRepo", () => {
   });
 
   it("calls bootstrap when a .git is created and repos are found", async () => {
+    execSync("git init", { cwd: tmpDir });
     const { workspace, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
-    vi.mocked(findGitRepos).mockResolvedValue([tmpDir]);
 
     waitForRepo(fakeCtx, workspace);
     triggerGitCreate();
@@ -79,8 +78,8 @@ describe("waitForRepo", () => {
   });
 
   it("calls bootstrap when workspace folders change and repos are found", async () => {
+    execSync("git init", { cwd: tmpDir });
     const { workspace, triggerFolderChange } = makeFakeWorkspace([tmpDir]);
-    vi.mocked(findGitRepos).mockResolvedValue([tmpDir]);
 
     waitForRepo(fakeCtx, workspace);
     triggerFolderChange();
@@ -89,7 +88,6 @@ describe("waitForRepo", () => {
 
   it("does not call bootstrap when no repos are found after detection", async () => {
     const { workspace, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
-    vi.mocked(findGitRepos).mockResolvedValue([]);
 
     waitForRepo(fakeCtx, workspace);
     triggerGitCreate();
@@ -98,8 +96,8 @@ describe("waitForRepo", () => {
   });
 
   it("disposes watchers after repos are found", async () => {
+    execSync("git init", { cwd: tmpDir });
     const { workspace, gitWatcher, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
-    vi.mocked(findGitRepos).mockResolvedValue([tmpDir]);
 
     waitForRepo(fakeCtx, workspace);
     triggerGitCreate();
@@ -116,8 +114,8 @@ describe("waitForRepo", () => {
   });
 
   it("does not double-bootstrap when both events fire before check resolves", async () => {
+    execSync("git init", { cwd: tmpDir });
     const { workspace, triggerGitCreate, triggerFolderChange } = makeFakeWorkspace([tmpDir]);
-    vi.mocked(findGitRepos).mockResolvedValue([tmpDir]);
 
     waitForRepo(fakeCtx, workspace);
     triggerGitCreate();
@@ -127,12 +125,16 @@ describe("waitForRepo", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(bootstrap).toHaveBeenCalledTimes(1);
   });
+});
 
+describe("waitForRepo — mocked findGitRepos for timing control", () => {
   it("does not bootstrap after external dispose while check is in-flight", async () => {
     const { workspace, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
 
     let resolveFindGitRepos!: (v: string[]) => void;
-    vi.mocked(findGitRepos).mockImplementation(() => new Promise((r) => (resolveFindGitRepos = r)));
+    vi.spyOn(await import("@/backend/queries/repoSearch"), "findGitRepos").mockImplementation(
+      () => new Promise((r) => (resolveFindGitRepos = r))
+    );
 
     const detector = waitForRepo(fakeCtx, workspace);
     triggerGitCreate();
