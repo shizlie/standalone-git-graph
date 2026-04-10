@@ -1,3 +1,7 @@
+import { mkdtempSync, rmdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as vscode from "vscode";
 
@@ -45,13 +49,17 @@ function makeFakeWorkspace(folderPaths: string[] = []): {
 
 const fakeCtx = {} as unknown as vscode.ExtensionContext;
 
+let tmpDir: string;
+
 beforeEach(() => {
+  tmpDir = mkdtempSync(join(tmpdir(), "ngg-waitForRepo-test-"));
   vi.mocked(findGitRepos).mockResolvedValue([]);
   vi.mocked(bootstrap).mockReturnValue(undefined);
 });
 
 afterEach(() => {
   vi.clearAllMocks();
+  rmdirSync(tmpDir);
 });
 
 describe("waitForRepo", () => {
@@ -62,25 +70,25 @@ describe("waitForRepo", () => {
   });
 
   it("calls bootstrap when a .git is created and repos are found", async () => {
-    const { workspace, triggerGitCreate } = makeFakeWorkspace(["/workspace/project"]);
-    vi.mocked(findGitRepos).mockResolvedValue(["/workspace/project"]);
+    const { workspace, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
+    vi.mocked(findGitRepos).mockResolvedValue([tmpDir]);
 
     waitForRepo(fakeCtx, workspace);
     triggerGitCreate();
-    await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledWith(fakeCtx, ["/workspace/project"]));
+    await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledWith(fakeCtx, [tmpDir]));
   });
 
   it("calls bootstrap when workspace folders change and repos are found", async () => {
-    const { workspace, triggerFolderChange } = makeFakeWorkspace(["/workspace/project"]);
-    vi.mocked(findGitRepos).mockResolvedValue(["/workspace/project"]);
+    const { workspace, triggerFolderChange } = makeFakeWorkspace([tmpDir]);
+    vi.mocked(findGitRepos).mockResolvedValue([tmpDir]);
 
     waitForRepo(fakeCtx, workspace);
     triggerFolderChange();
-    await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledWith(fakeCtx, ["/workspace/project"]));
+    await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledWith(fakeCtx, [tmpDir]));
   });
 
   it("does not call bootstrap when no repos are found after detection", async () => {
-    const { workspace, triggerGitCreate } = makeFakeWorkspace(["/workspace/project"]);
+    const { workspace, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
     vi.mocked(findGitRepos).mockResolvedValue([]);
 
     waitForRepo(fakeCtx, workspace);
@@ -90,8 +98,8 @@ describe("waitForRepo", () => {
   });
 
   it("disposes watchers after repos are found", async () => {
-    const { workspace, gitWatcher, triggerGitCreate } = makeFakeWorkspace(["/workspace/project"]);
-    vi.mocked(findGitRepos).mockResolvedValue(["/workspace/project"]);
+    const { workspace, gitWatcher, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
+    vi.mocked(findGitRepos).mockResolvedValue([tmpDir]);
 
     waitForRepo(fakeCtx, workspace);
     triggerGitCreate();
@@ -108,10 +116,8 @@ describe("waitForRepo", () => {
   });
 
   it("does not double-bootstrap when both events fire before check resolves", async () => {
-    const { workspace, triggerGitCreate, triggerFolderChange } = makeFakeWorkspace([
-      "/workspace/project"
-    ]);
-    vi.mocked(findGitRepos).mockResolvedValue(["/workspace/project"]);
+    const { workspace, triggerGitCreate, triggerFolderChange } = makeFakeWorkspace([tmpDir]);
+    vi.mocked(findGitRepos).mockResolvedValue([tmpDir]);
 
     waitForRepo(fakeCtx, workspace);
     triggerGitCreate();
@@ -123,7 +129,7 @@ describe("waitForRepo", () => {
   });
 
   it("does not bootstrap after external dispose while check is in-flight", async () => {
-    const { workspace, triggerGitCreate } = makeFakeWorkspace(["/workspace/project"]);
+    const { workspace, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
 
     let resolveFindGitRepos!: (v: string[]) => void;
     vi.mocked(findGitRepos).mockImplementation(() => new Promise((r) => (resolveFindGitRepos = r)));
@@ -131,7 +137,7 @@ describe("waitForRepo", () => {
     const detector = waitForRepo(fakeCtx, workspace);
     triggerGitCreate();
     detector.dispose();
-    resolveFindGitRepos(["/workspace/project"]);
+    resolveFindGitRepos([tmpDir]);
 
     await new Promise((r) => setTimeout(r, 20));
     expect(bootstrap).not.toHaveBeenCalled();
