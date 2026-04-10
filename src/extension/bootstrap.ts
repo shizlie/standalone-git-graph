@@ -4,6 +4,7 @@ import { AvatarManager } from "@/avatarManager";
 import { gitClientFactory } from "@/backend/gitClient";
 import { buildExtensionUri } from "@/backend/utils/path";
 import { config } from "@/config";
+import { DiffDocProvider } from "@/diffDocProvider";
 import { ExtensionState } from "@/extensionState";
 import { initL10n } from "@/l10n";
 import * as l10n from "@/l10n";
@@ -93,6 +94,13 @@ export function bootstrap(ctx: vscode.ExtensionContext, repos: string[]): void {
           onPanelShown
         });
       })
+    )
+  );
+
+  ctx.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(
+      DiffDocProvider.scheme,
+      new DiffDocProvider(gitClient.getInstance)
     )
   );
 }
