@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { searchDirectoryForRepos } from "@/backend/utils/repoSearch";
+import { findGitRepos, searchDirectoryForRepos } from "@/backend/utils/repoSearch";
 
 import { git } from "@tests/backend/helpers";
 
@@ -46,6 +46,7 @@ beforeAll(() => {
   initRepo(repoB);
   fs.mkdirSync(nonRepoDir);
   fs.writeFileSync(path.join(nonRepoDir, "readme.txt"), "hello");
+  fs.mkdirSync(path.join(tmpDir, "plain"));
 });
 
 afterAll(() => {
@@ -102,5 +103,46 @@ describe("searchDirectoryForRepos", () => {
   it("does not return .git subdirectory as a repo", async () => {
     const result = await searchDirectoryForRepos(tmpDir, 2, "git", []);
     expect(result.every((r) => !r.includes("/.git"))).toBe(true);
+  });
+});
+
+describe("findGitRepos", () => {
+  it("returns [] when paths is empty", async () => {
+    expect(await findGitRepos([], "git", 2)).toEqual([]);
+  });
+
+  it("finds a repo when the path itself is a git repo", async () => {
+    expect(await findGitRepos([repoA], "git", 0)).toEqual([repoA]);
+  });
+
+  it("returns [] when path is not a repo and maxDepth is 0", async () => {
+    expect(await findGitRepos([path.join(tmpDir, "plain")], "git", 0)).toEqual([]);
+  });
+
+  it("returns [] for a non-existent path", async () => {
+    expect(await findGitRepos(["/tmp/ngg-does-not-exist-xyz"], "git", 2)).toEqual([]);
+  });
+
+  it("finds a repo nested at depth 1", async () => {
+    expect(await findGitRepos([tmpDir], "git", 1)).toContain(repoA);
+  });
+
+  it("does not find a repo beyond maxDepth", async () => {
+    expect(await findGitRepos([tmpDir], "git", 1)).not.toContain(repoB);
+  });
+
+  it("finds a repo exactly at maxDepth", async () => {
+    expect(await findGitRepos([tmpDir], "git", 2)).toContain(repoB);
+  });
+
+  it("aggregates repos across multiple workspace paths", async () => {
+    const nestedDir = path.join(tmpDir, "nested");
+    const result = await findGitRepos([repoA, nestedDir], "git", 1);
+    expect(result.sort()).toEqual([repoA, repoB].sort());
+  });
+
+  it("does not report .git directories as repos", async () => {
+    const result = await findGitRepos([tmpDir], "git", 2);
+    expect(result.every((r) => !r.endsWith("/.git"))).toBe(true);
   });
 });

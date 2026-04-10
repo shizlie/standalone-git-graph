@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 
+import { findGitRepos } from "@/backend/utils/repoSearch";
 import { config } from "@/config";
-import { bootstrap, findGitRepos } from "@/extension/bootstrap";
+import { bootstrap } from "@/extension/bootstrap";
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const paths = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);

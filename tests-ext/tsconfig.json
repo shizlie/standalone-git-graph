@@ -7,15 +7,12 @@
     },
     "module": "commonjs",
     "target": "es6",
-    "lib": ["es2020", "dom"],
+    "lib": ["es2020"],
     "strict": true,
     "noImplicitAny": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "outDir": "./out",
+    "sourceMap": true
   },
-  "include": [
-    "./backend/**/*.ts",
-    "./webview/**/*.ts",
-    "../src/backend/**/*.ts",
-    "../src/webview/**/*.ts"
-  ]
+  "include": ["./**/*.ts"]
 }
