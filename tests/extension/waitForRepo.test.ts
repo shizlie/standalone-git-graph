@@ -17,9 +17,11 @@ function makeFakeWorkspace(folderPaths: string[] = []): {
   gitWatcher: { dispose: ReturnType<typeof vi.fn> };
   triggerGitCreate: () => void;
   triggerFolderChange: () => void;
+  triggerConfigChange: (section: string) => void;
 } {
   let gitCreateHandler: (() => void) | null = null;
   let folderChangeHandler: ((e: vscode.WorkspaceFoldersChangeEvent) => void) | null = null;
+  let configChangeHandler: ((e: vscode.ConfigurationChangeEvent) => void) | null = null;
 
   const gitWatcher = {
     onDidCreate(handler: () => void) {
@@ -35,6 +37,10 @@ function makeFakeWorkspace(folderPaths: string[] = []): {
     onDidChangeWorkspaceFolders(handler: (e: vscode.WorkspaceFoldersChangeEvent) => void) {
       folderChangeHandler = handler;
       return { dispose: vi.fn() };
+    },
+    onDidChangeConfiguration(handler: (e: vscode.ConfigurationChangeEvent) => void) {
+      configChangeHandler = handler;
+      return { dispose: vi.fn() };
     }
   };
 
@@ -42,7 +48,11 @@ function makeFakeWorkspace(folderPaths: string[] = []): {
     workspace,
     gitWatcher,
     triggerGitCreate: () => gitCreateHandler?.(),
-    triggerFolderChange: () => folderChangeHandler?.({} as vscode.WorkspaceFoldersChangeEvent)
+    triggerFolderChange: () => folderChangeHandler?.({} as vscode.WorkspaceFoldersChangeEvent),
+    triggerConfigChange: (section: string) =>
+      configChangeHandler?.({
+        affectsConfiguration: (s) => s === section
+      } as vscode.ConfigurationChangeEvent)
   };
 }
 

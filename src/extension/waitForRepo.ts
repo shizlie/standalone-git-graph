@@ -6,7 +6,10 @@ import { bootstrap } from "@/extension/bootstrap";
 
 export type WorkspaceApi = Pick<
   typeof vscode.workspace,
-  "createFileSystemWatcher" | "onDidChangeWorkspaceFolders" | "workspaceFolders"
+  | "createFileSystemWatcher"
+  | "onDidChangeWorkspaceFolders"
+  | "onDidChangeConfiguration"
+  | "workspaceFolders"
 >;
 
 type WatcherState = {
@@ -37,6 +40,13 @@ export function waitForRepo(
 
   state.disposables.push(gitWatcher.onDidCreate(() => check(ctx, workspace, state)));
   state.disposables.push(workspace.onDidChangeWorkspaceFolders(() => check(ctx, workspace, state)));
+  state.disposables.push(
+    workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("neo-git-graph.maxDepthOfRepoSearch")) {
+        void check(ctx, workspace, state);
+      }
+    })
+  );
 
   return { dispose: () => dispose(state) };
 }
