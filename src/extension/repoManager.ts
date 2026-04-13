@@ -30,6 +30,8 @@ export function createRepoManager(
     repos.forEach((repo) => {
       addRepo(repo);
     });
+
+    sendRepos();
   }
 
   function getRepos() {
