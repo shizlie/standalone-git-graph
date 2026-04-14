@@ -9,6 +9,7 @@ import { DiffDocProvider } from "@/diffDocProvider";
 import { maxDepthIncreased } from "@/extension/maxDepthTracker";
 import { registerMessageHandlers } from "@/extension/messageHandler";
 import { createRepoManager, RepoManager } from "@/extension/repoManager";
+import { VscodeWorkspace } from "@/extension/types";
 import { WebviewBridge, webviewBridgeFactory } from "@/extension/webviewBridge";
 import { createWebviewPanel, WebviewPanel } from "@/extension/webviewPanel";
 import { ExtensionState } from "@/extensionState";
@@ -78,7 +79,11 @@ function registerViewCommand(
   );
 }
 
-export function initExtension(ctx: vscode.ExtensionContext, repos: string[]) {
+export function initExtension(
+  ctx: vscode.ExtensionContext,
+  repos: string[],
+  workspace: VscodeWorkspace = vscode.workspace
+) {
   const extensionState = new ExtensionState(ctx);
   const avatarManager = new AvatarManager(config.gitPath, extensionState);
 
@@ -102,6 +107,21 @@ export function initExtension(ctx: vscode.ExtensionContext, repos: string[]) {
   registerViewCommand(ctx, repoManager, extensionState, avatarManager, gitClient);
 
   ctx.subscriptions.push(
+    workspace.onDidChangeWorkspaceFolders(async (e) => {
+      if (e.added.length > 0) {
+        const paths = e.added.map((f) => f.uri.fsPath);
+        const repoDirs = await findGitRepos(paths, config.gitPath(), config.maxDepthOfRepoSearch());
+        for (const repo of repoDirs) repoManager.addRepo(repo);
+        if (repoDirs.length > 0) repoManager.sendRepos();
+      }
+      if (e.removed.length > 0) {
+        let changes = false;
+        for (const folder of e.removed) {
+          if (repoManager.removeReposWithinFolder(folder.uri.fsPath)) changes = true;
+        }
+        if (changes) repoManager.sendRepos();
+      }
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("neo-git-graph.showStatusBarItem")) {
         statusBarItem.refresh();
