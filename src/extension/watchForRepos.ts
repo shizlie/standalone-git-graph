@@ -4,15 +4,8 @@ import { findGitRepos } from "@/backend/queries/repoSearch";
 import { config } from "@/config";
 import { initExtension } from "@/extension/initExtension";
 import { maxDepthIncreased } from "@/extension/maxDepthTracker";
+import { VscodeWorkspace } from "@/extension/types";
 import * as l10n from "@/l10n";
-
-export type WorkspaceApi = Pick<
-  typeof vscode.workspace,
-  | "createFileSystemWatcher"
-  | "onDidChangeWorkspaceFolders"
-  | "onDidChangeConfiguration"
-  | "workspaceFolders"
->;
 
 type WatcherState = {
   disposed: boolean;
@@ -25,7 +18,11 @@ function dispose(state: WatcherState) {
   state.disposables.length = 0;
 }
 
-async function check(ctx: vscode.ExtensionContext, workspace: WorkspaceApi, state: WatcherState) {
+async function check(
+  ctx: vscode.ExtensionContext,
+  workspace: VscodeWorkspace,
+  state: WatcherState
+) {
   const paths = (workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
   const repoDirs = await findGitRepos(paths, config.gitPath(), config.maxDepthOfRepoSearch());
   if (repoDirs.length === 0 || state.disposed) return;
@@ -35,7 +32,7 @@ async function check(ctx: vscode.ExtensionContext, workspace: WorkspaceApi, stat
 
 export function watchForRepos(
   ctx: vscode.ExtensionContext,
-  workspace: WorkspaceApi = vscode.workspace
+  workspace: VscodeWorkspace = vscode.workspace
 ): { dispose(): void } {
   const gitWatcher = workspace.createFileSystemWatcher("**/.git");
   const state: WatcherState = { disposed: false, disposables: [gitWatcher] };

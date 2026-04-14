@@ -9,11 +9,11 @@ import type * as vscode from "vscode";
 vi.mock("@/extension/initExtension");
 
 import { initExtension } from "@/extension/initExtension";
+import type { VscodeWorkspace } from "@/extension/types";
 import { watchForRepos } from "@/extension/watchForRepos";
-import type { WorkspaceApi } from "@/extension/watchForRepos";
 
 function makeFakeWorkspace(folderPaths: string[] = []): {
-  workspace: WorkspaceApi;
+  workspace: VscodeWorkspace;
   gitWatcher: { dispose: ReturnType<typeof vi.fn> };
   triggerGitCreate: () => void;
   triggerFolderChange: () => void;
@@ -31,7 +31,7 @@ function makeFakeWorkspace(folderPaths: string[] = []): {
     dispose: vi.fn()
   };
 
-  const workspace: WorkspaceApi = {
+  const workspace: VscodeWorkspace = {
     workspaceFolders: folderPaths.map((p) => ({ uri: { fsPath: p } }) as vscode.WorkspaceFolder),
     createFileSystemWatcher: vi.fn(() => gitWatcher as unknown as vscode.FileSystemWatcher),
     onDidChangeWorkspaceFolders(handler: (e: vscode.WorkspaceFoldersChangeEvent) => void) {
