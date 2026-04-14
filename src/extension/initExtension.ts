@@ -6,6 +6,7 @@ import { findGitRepos } from "@/backend/queries/repoSearch";
 import { buildExtensionUri } from "@/backend/utils/path";
 import { config } from "@/config";
 import { DiffDocProvider } from "@/diffDocProvider";
+import { maxDepthIncreased } from "@/extension/maxDepthTracker";
 import { registerMessageHandlers } from "@/extension/messageHandler";
 import { createRepoManager, RepoManager } from "@/extension/repoManager";
 import { WebviewBridge, webviewBridgeFactory } from "@/extension/webviewBridge";
@@ -107,12 +108,14 @@ export function initExtension(ctx: vscode.ExtensionContext, repos: string[]) {
       } else if (e.affectsConfiguration("git.path")) {
         gitClient.setGitPath(config.gitPath());
       } else if (e.affectsConfiguration("neo-git-graph.maxDepthOfRepoSearch")) {
-        const paths = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
-        void findGitRepos(paths, config.gitPath(), config.maxDepthOfRepoSearch()).then(
-          (repoDirs) => {
-            if (repoDirs.length > 0) repoManager.setRepos(repoDirs);
-          }
-        );
+        if (maxDepthIncreased()) {
+          const paths = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+          void findGitRepos(paths, config.gitPath(), config.maxDepthOfRepoSearch()).then(
+            (repoDirs) => {
+              if (repoDirs.length > 0) repoManager.setRepos(repoDirs);
+            }
+          );
+        }
       }
     })
   );

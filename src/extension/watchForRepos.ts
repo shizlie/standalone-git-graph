@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { findGitRepos } from "@/backend/queries/repoSearch";
 import { config } from "@/config";
 import { initExtension } from "@/extension/initExtension";
+import { maxDepthIncreased } from "@/extension/maxDepthTracker";
 import * as l10n from "@/l10n";
 
 export type WorkspaceApi = Pick<
@@ -44,7 +45,9 @@ export function watchForRepos(
     workspace.onDidChangeWorkspaceFolders(() => check(ctx, workspace, state)),
     workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("neo-git-graph.maxDepthOfRepoSearch")) {
-        void check(ctx, workspace, state);
+        if (maxDepthIncreased()) {
+          void check(ctx, workspace, state);
+        }
       }
     }),
     vscode.commands.registerCommand("neo-git-graph.view", async () => {
