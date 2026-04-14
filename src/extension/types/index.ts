@@ -1,1 +1,1 @@
-export type { VscodeWorkspace } from "./vscode";
+export * from "./vscode";
