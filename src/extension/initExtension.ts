@@ -106,7 +106,18 @@ export function initExtension(
   repoManager.setRepos(repos);
   registerViewCommand(ctx, repoManager, extensionState, avatarManager, gitClient);
 
+  const gitWatcher = workspace.createFileSystemWatcher("**/.git");
   ctx.subscriptions.push(
+    gitWatcher,
+    gitWatcher.onDidCreate((uri) => {
+      const repoPath = uri.fsPath.slice(0, -5);
+      repoManager.addRepo(repoPath);
+      repoManager.sendRepos();
+    }),
+    gitWatcher.onDidDelete((uri) => {
+      const repoPath = uri.fsPath.slice(0, -5);
+      if (repoManager.removeReposWithinFolder(repoPath)) repoManager.sendRepos();
+    }),
     workspace.onDidChangeWorkspaceFolders(async (e) => {
       if (e.added.length > 0) {
         const paths = e.added.map((f) => f.uri.fsPath);
