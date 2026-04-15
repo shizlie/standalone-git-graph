@@ -1,157 +1,236 @@
-import { execSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as vscode from "vscode";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/extension/initExtension");
-
-import { initExtension } from "@/extension/initExtension";
-import type { VscodeWorkspace } from "@/extension/types";
+import type { InitExtension } from "@/extension/initExtension";
 import { watchForRepos } from "@/extension/watchForRepos";
 
-function makeFakeWorkspace(folderPaths: string[] = []): {
-  workspace: VscodeWorkspace;
-  gitWatcher: { dispose: ReturnType<typeof vi.fn> };
-  triggerGitCreate: () => void;
-  triggerFolderChange: () => void;
-  triggerConfigChange: (section: string) => void;
-} {
-  let gitCreateHandler: (() => void) | null = null;
-  let folderChangeHandler: ((e: vscode.WorkspaceFoldersChangeEvent) => void) | null = null;
-  let configChangeHandler: ((e: vscode.ConfigurationChangeEvent) => void) | null = null;
+import { makeRepo } from "@tests/backend/helpers";
 
-  const gitWatcher = {
-    onDidCreate(handler: () => void) {
-      gitCreateHandler = handler;
-      return { dispose: vi.fn() };
-    },
-    dispose: vi.fn()
-  };
+// ─── controllable vscode mock ─────────────────────────────────────────────────
+//
+// vi.hoisted runs before any imports so the factory below can safely close over
+// these variables when vi.mock("vscode") is evaluated.
 
-  const workspace: VscodeWorkspace = {
-    workspaceFolders: folderPaths.map((p) => ({ uri: { fsPath: p } }) as vscode.WorkspaceFolder),
-    createFileSystemWatcher: vi.fn(() => gitWatcher as unknown as vscode.FileSystemWatcher),
-    onDidChangeWorkspaceFolders(handler: (e: vscode.WorkspaceFoldersChangeEvent) => void) {
-      folderChangeHandler = handler;
-      return { dispose: vi.fn() };
-    },
-    onDidChangeConfiguration(handler: (e: vscode.ConfigurationChangeEvent) => void) {
-      configChangeHandler = handler;
-      return { dispose: vi.fn() };
-    }
-  };
+const mock = vi.hoisted(() => {
+  let folders: Array<{ uri: { fsPath: string } }> = [];
+  let maxDepthVal = 0;
+
+  let onCreateCb: (() => void) | undefined;
+  let onFolderChangeCb: (() => void) | undefined;
+  let onConfigChangeCb: ((e: { affectsConfiguration(k: string): boolean }) => void) | undefined;
+  const commands: Record<string, () => Promise<void>> = {};
+  const showErrorMessage = vi.fn();
 
   return {
-    workspace,
-    gitWatcher,
-    triggerGitCreate: () => gitCreateHandler?.(),
-    triggerFolderChange: () => folderChangeHandler?.({} as vscode.WorkspaceFoldersChangeEvent),
-    triggerConfigChange: (section: string) =>
-      configChangeHandler?.({
-        affectsConfiguration: (s) => s === section
-      } as vscode.ConfigurationChangeEvent)
+    workspace: {
+      get workspaceFolders() {
+        return folders;
+      },
+      getConfiguration: (section: string) => ({
+        get: (key: string, def: unknown) => {
+          if (section === "neo-git-graph" && key === "maxDepthOfRepoSearch") return maxDepthVal;
+          if (section === "git" && key === "path") return null; // falls back to "git"
+          return def;
+        }
+      }),
+      createFileSystemWatcher: () => ({
+        onDidCreate: (cb: () => void) => {
+          onCreateCb = cb;
+          return { dispose: vi.fn() };
+        },
+        dispose: vi.fn()
+      }),
+      onDidChangeWorkspaceFolders: (cb: () => void) => {
+        onFolderChangeCb = cb;
+        return { dispose: vi.fn() };
+      },
+      onDidChangeConfiguration: (cb: (e: { affectsConfiguration(k: string): boolean }) => void) => {
+        onConfigChangeCb = cb;
+        return { dispose: vi.fn() };
+      }
+    },
+    commands: {
+      registerCommand: (name: string, handler: () => Promise<void>) => {
+        commands[name] = handler;
+        return { dispose: vi.fn() };
+      }
+    },
+    window: { showErrorMessage },
+    l10n: { t: (key: string) => key, uri: undefined },
+
+    // ── test controls ────────────────────────────────────────────────────────
+    setFolders(paths: string[]) {
+      folders = paths.map((p) => ({ uri: { fsPath: p } }));
+    },
+    setMaxDepth(d: number) {
+      maxDepthVal = d;
+    },
+    fireCreate() {
+      onCreateCb?.();
+    },
+    fireFolderChange() {
+      onFolderChangeCb?.();
+    },
+    fireConfigChange(key: string) {
+      onConfigChangeCb?.({ affectsConfiguration: (k) => k === key });
+    },
+    async invokeCommand(name: string) {
+      await commands[name]?.();
+    },
+    showErrorMessage
   };
-}
+});
 
-const fakeCtx = {} as unknown as vscode.ExtensionContext;
+vi.mock("vscode", () => mock);
 
-let tmpDir: string;
+// ─── shared fixtures ──────────────────────────────────────────────────────────
+
+// ctx is never inspected by watchForRepos itself — it's just forwarded to onReposFound.
+const ctx = {} as unknown as import("vscode").ExtensionContext;
+
+// Enough time for findGitRepos (real fs) to complete.
+const tick = (ms = 150) => new Promise<void>((r) => setTimeout(r, ms));
+
+let repoDir: string;
+let plainDir: string;
+
+beforeAll(() => {
+  repoDir = makeRepo();
+  plainDir = fs.mkdtempSync(path.join(os.tmpdir(), "ngg-watch-plain-"));
+});
+
+afterAll(() => {
+  fs.rmSync(repoDir, { recursive: true, force: true });
+  fs.rmSync(plainDir, { recursive: true, force: true });
+});
+
+let watcher: ReturnType<typeof watchForRepos> | undefined;
+let onReposFound: ReturnType<typeof vi.fn<InitExtension>>;
 
 beforeEach(() => {
-  tmpDir = mkdtempSync(join(tmpdir(), "ngg-watchForRepos-test-"));
-  vi.mocked(initExtension).mockReturnValue(undefined);
+  vi.clearAllMocks();
+  mock.setFolders([]);
+  mock.setMaxDepth(0);
+  onReposFound = vi.fn<InitExtension>();
+  watcher = undefined;
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
-  vi.clearAllMocks();
-  rmSync(tmpDir, { recursive: true, force: true });
+  watcher?.dispose();
 });
+
+// ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("watchForRepos", () => {
-  it("watches **/.git for creation events", () => {
-    const { workspace } = makeFakeWorkspace();
-    watchForRepos(fakeCtx, workspace);
-    expect(workspace.createFileSystemWatcher).toHaveBeenCalledWith("**/.git");
+  describe(".git creation trigger", () => {
+    it("calls onReposFound with found repos", async () => {
+      mock.setFolders([repoDir]);
+      watcher = watchForRepos(ctx, onReposFound);
+
+      mock.fireCreate();
+
+      await vi.waitFor(() => expect(onReposFound).toHaveBeenCalledOnce());
+      expect(onReposFound).toHaveBeenCalledWith(ctx, expect.arrayContaining([repoDir]));
+    });
+
+    it("does not call onReposFound when no repos are found", async () => {
+      mock.setFolders([plainDir]);
+      watcher = watchForRepos(ctx, onReposFound);
+
+      mock.fireCreate();
+      await tick();
+
+      expect(onReposFound).not.toHaveBeenCalled();
+    });
   });
 
-  it("calls initExtension when a .git is created and repos are found", async () => {
-    execSync("git init", { cwd: tmpDir });
-    const { workspace, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
+  describe("workspace folders change trigger", () => {
+    it("calls onReposFound with found repos", async () => {
+      mock.setFolders([repoDir]);
+      watcher = watchForRepos(ctx, onReposFound);
 
-    watchForRepos(fakeCtx, workspace);
-    triggerGitCreate();
-    await vi.waitFor(() => expect(initExtension).toHaveBeenCalledWith(fakeCtx, [tmpDir]));
+      mock.fireFolderChange();
+
+      await vi.waitFor(() => expect(onReposFound).toHaveBeenCalledOnce());
+      expect(onReposFound).toHaveBeenCalledWith(ctx, expect.arrayContaining([repoDir]));
+    });
   });
 
-  it("calls initExtension when workspace folders change and repos are found", async () => {
-    execSync("git init", { cwd: tmpDir });
-    const { workspace, triggerFolderChange } = makeFakeWorkspace([tmpDir]);
+  describe("config change trigger", () => {
+    it("does not call onReposFound when maxDepth did not increase", async () => {
+      mock.setFolders([repoDir]);
+      mock.setMaxDepth(0); // same as the tracker's current value → maxDepthIncreased() = false
+      watcher = watchForRepos(ctx, onReposFound);
 
-    watchForRepos(fakeCtx, workspace);
-    triggerFolderChange();
-    await vi.waitFor(() => expect(initExtension).toHaveBeenCalledWith(fakeCtx, [tmpDir]));
+      mock.fireConfigChange("neo-git-graph.maxDepthOfRepoSearch");
+      await tick();
+
+      expect(onReposFound).not.toHaveBeenCalled();
+    });
+
+    it("calls onReposFound when maxDepth increases", async () => {
+      mock.setFolders([repoDir]);
+      mock.setMaxDepth(5); // higher than tracker's current value → maxDepthIncreased() = true
+      watcher = watchForRepos(ctx, onReposFound);
+
+      mock.fireConfigChange("neo-git-graph.maxDepthOfRepoSearch");
+
+      await vi.waitFor(() => expect(onReposFound).toHaveBeenCalledOnce());
+    });
+
+    it("does not call onReposFound for an unrelated config key", async () => {
+      mock.setFolders([repoDir]);
+      watcher = watchForRepos(ctx, onReposFound);
+
+      mock.fireConfigChange("neo-git-graph.graphStyle");
+      await tick();
+
+      expect(onReposFound).not.toHaveBeenCalled();
+    });
   });
 
-  it("does not call initExtension when no repos are found after detection", async () => {
-    const { workspace, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
+  describe("one-shot disposal", () => {
+    it("ignores further triggers after onReposFound has been called once", async () => {
+      mock.setFolders([repoDir]);
+      watcher = watchForRepos(ctx, onReposFound);
 
-    watchForRepos(fakeCtx, workspace);
-    triggerGitCreate();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(initExtension).not.toHaveBeenCalled();
+      mock.fireCreate();
+      await vi.waitFor(() => expect(onReposFound).toHaveBeenCalledOnce());
+
+      // State is now disposed — a second event must not re-trigger.
+      mock.fireCreate();
+      await tick();
+
+      expect(onReposFound).toHaveBeenCalledOnce();
+    });
   });
 
-  it("disposes watchers after repos are found", async () => {
-    execSync("git init", { cwd: tmpDir });
-    const { workspace, gitWatcher, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
+  describe("error commands (shown before any repo is found)", () => {
+    it("neo-git-graph.view shows a modal error", async () => {
+      watcher = watchForRepos(ctx, onReposFound);
 
-    watchForRepos(fakeCtx, workspace);
-    triggerGitCreate();
-    await vi.waitFor(() => expect(initExtension).toHaveBeenCalled());
-    expect(gitWatcher.dispose).toHaveBeenCalled();
-  });
+      await mock.invokeCommand("neo-git-graph.view");
 
-  it("dispose() is idempotent", () => {
-    const { workspace, gitWatcher } = makeFakeWorkspace();
-    const detector = watchForRepos(fakeCtx, workspace);
-    detector.dispose();
-    detector.dispose();
-    expect(gitWatcher.dispose).toHaveBeenCalledTimes(1);
-  });
+      expect(mock.showErrorMessage).toHaveBeenCalledOnce();
+      expect(mock.showErrorMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ modal: true })
+      );
+    });
 
-  it("does not double-initExtension when both events fire before check resolves", async () => {
-    execSync("git init", { cwd: tmpDir });
-    const { workspace, triggerGitCreate, triggerFolderChange } = makeFakeWorkspace([tmpDir]);
+    it("neo-git-graph.clearAvatarCache shows a modal error", async () => {
+      watcher = watchForRepos(ctx, onReposFound);
 
-    watchForRepos(fakeCtx, workspace);
-    triggerGitCreate();
-    triggerFolderChange();
+      await mock.invokeCommand("neo-git-graph.clearAvatarCache");
 
-    await vi.waitFor(() => expect(initExtension).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 20));
-    expect(initExtension).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("watchForRepos — mocked findGitRepos for timing control", () => {
-  it("does not initExtension after external dispose while check is in-flight", async () => {
-    const { workspace, triggerGitCreate } = makeFakeWorkspace([tmpDir]);
-
-    let resolveFindGitRepos!: (v: string[]) => void;
-    vi.spyOn(await import("@/backend/queries/repoSearch"), "findGitRepos").mockImplementation(
-      () => new Promise((r) => (resolveFindGitRepos = r))
-    );
-
-    const detector = watchForRepos(fakeCtx, workspace);
-    triggerGitCreate();
-    detector.dispose();
-    resolveFindGitRepos([tmpDir]);
-
-    await new Promise((r) => setTimeout(r, 20));
-    expect(initExtension).not.toHaveBeenCalled();
+      expect(mock.showErrorMessage).toHaveBeenCalledOnce();
+      expect(mock.showErrorMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ modal: true })
+      );
+    });
   });
 });

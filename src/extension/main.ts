@@ -17,7 +17,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     return;
   }
 
-  ctx.subscriptions.push(watchForRepos(ctx));
+  ctx.subscriptions.push(watchForRepos(ctx, initExtension));
 }
 
 export function deactivate() {}

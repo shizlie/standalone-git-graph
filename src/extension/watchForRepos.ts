@@ -2,9 +2,8 @@ import * as vscode from "vscode";
 
 import { findGitRepos } from "@/backend/queries/repoSearch";
 import { config } from "@/config";
-import { initExtension } from "@/extension/initExtension";
+import type { InitExtension } from "@/extension/initExtension";
 import { maxDepthIncreased } from "@/extension/maxDepthTracker";
-import { VscodeWorkspace } from "@/extension/types";
 import * as l10n from "@/l10n";
 
 type WatcherState = {
@@ -20,30 +19,30 @@ function dispose(state: WatcherState) {
 
 async function check(
   ctx: vscode.ExtensionContext,
-  workspace: VscodeWorkspace,
-  state: WatcherState
+  state: WatcherState,
+  onReposFound: InitExtension
 ) {
-  const paths = (workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+  const paths = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
   const repoDirs = await findGitRepos(paths, config.gitPath(), config.maxDepthOfRepoSearch());
   if (repoDirs.length === 0 || state.disposed) return;
   dispose(state);
-  initExtension(ctx, repoDirs);
+  onReposFound(ctx, repoDirs);
 }
 
 export function watchForRepos(
   ctx: vscode.ExtensionContext,
-  workspace: VscodeWorkspace = vscode.workspace
+  onReposFound: InitExtension
 ): { dispose(): void } {
-  const gitWatcher = workspace.createFileSystemWatcher("**/.git");
+  const gitWatcher = vscode.workspace.createFileSystemWatcher("**/.git");
   const state: WatcherState = { disposed: false, disposables: [gitWatcher] };
 
   state.disposables.push(
-    gitWatcher.onDidCreate(() => check(ctx, workspace, state)),
-    workspace.onDidChangeWorkspaceFolders(() => check(ctx, workspace, state)),
-    workspace.onDidChangeConfiguration((e) => {
+    gitWatcher.onDidCreate(() => check(ctx, state, onReposFound)),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => check(ctx, state, onReposFound)),
+    vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("neo-git-graph.maxDepthOfRepoSearch")) {
         if (maxDepthIncreased()) {
-          void check(ctx, workspace, state);
+          void check(ctx, state, onReposFound);
         }
       }
     }),

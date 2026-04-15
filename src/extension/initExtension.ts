@@ -9,13 +9,14 @@ import { DiffDocProvider } from "@/diffDocProvider";
 import { maxDepthIncreased } from "@/extension/maxDepthTracker";
 import { registerMessageHandlers } from "@/extension/messageHandler";
 import { createRepoManager, RepoManager } from "@/extension/repoManager";
-import { VscodeWorkspace } from "@/extension/types";
 import { WebviewBridge, webviewBridgeFactory } from "@/extension/webviewBridge";
 import { createWebviewPanel, WebviewPanel } from "@/extension/webviewPanel";
 import { ExtensionState } from "@/extensionState";
 import * as l10n from "@/l10n";
 import { RepoFileWatcher } from "@/repoFileWatcher";
 import { StatusBarItem } from "@/statusBarItem";
+
+export type InitExtension = typeof initExtension;
 
 function registerViewCommand(
   ctx: vscode.ExtensionContext,
@@ -79,11 +80,7 @@ function registerViewCommand(
   );
 }
 
-export function initExtension(
-  ctx: vscode.ExtensionContext,
-  repos: string[],
-  workspace: VscodeWorkspace = vscode.workspace
-) {
+export function initExtension(ctx: vscode.ExtensionContext, repos: string[]) {
   const extensionState = new ExtensionState(ctx);
   const avatarManager = new AvatarManager(config.gitPath, extensionState);
 
@@ -106,7 +103,7 @@ export function initExtension(
   repoManager.setRepos(repos);
   registerViewCommand(ctx, repoManager, extensionState, avatarManager, gitClient);
 
-  const gitWatcher = workspace.createFileSystemWatcher("**/.git");
+  const gitWatcher = vscode.workspace.createFileSystemWatcher("**/.git");
   ctx.subscriptions.push(
     gitWatcher,
     gitWatcher.onDidCreate((uri) => {
@@ -118,7 +115,7 @@ export function initExtension(
       const repoPath = uri.fsPath.slice(0, -5);
       if (repoManager.removeReposWithinFolder(repoPath)) repoManager.sendRepos();
     }),
-    workspace.onDidChangeWorkspaceFolders(async (e) => {
+    vscode.workspace.onDidChangeWorkspaceFolders(async (e) => {
       if (e.added.length > 0) {
         const paths = e.added.map((f) => f.uri.fsPath);
         const repoDirs = await findGitRepos(paths, config.gitPath(), config.maxDepthOfRepoSearch());
