@@ -1,3 +1,5 @@
+import * as path from "path";
+
 import * as vscode from "vscode";
 
 import { AvatarManager } from "@/avatarManager";
@@ -108,12 +110,12 @@ export function initExtension(ctx: vscode.ExtensionContext, repos: string[]) {
   ctx.subscriptions.push(
     gitWatcher,
     gitWatcher.onDidCreate((uri) => {
-      const repoPath = uri.fsPath.slice(0, -5);
+      const repoPath = path.dirname(uri.fsPath);
       repoManager.addRepo(repoPath);
       repoManager.sendRepos();
     }),
     gitWatcher.onDidDelete((uri) => {
-      const repoPath = uri.fsPath.slice(0, -5);
+      const repoPath = path.dirname(uri.fsPath);
       if (repoManager.removeReposWithinFolder(repoPath)) repoManager.sendRepos();
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(async (e) => {
