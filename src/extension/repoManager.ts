@@ -29,6 +29,7 @@ export function createRepoManager(
     for (const key of Object.keys(repos)) {
       delete repos[key];
     }
+    extensionState.saveRepos(repos);
     repoDirs.forEach((repo) => {
       addRepo(repo);
     });
