@@ -111,8 +111,7 @@ export function initExtension(ctx: vscode.ExtensionContext, repos: string[]) {
     gitWatcher,
     gitWatcher.onDidCreate((uri) => {
       const repoPath = path.dirname(uri.fsPath);
-      repoManager.addRepo(repoPath);
-      repoManager.sendRepos();
+      if (repoManager.addRepo(repoPath)) repoManager.sendRepos();
     }),
     gitWatcher.onDidDelete((uri) => {
       const repoPath = path.dirname(uri.fsPath);
