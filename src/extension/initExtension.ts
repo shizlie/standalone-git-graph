@@ -143,9 +143,9 @@ export function initExtension(ctx: vscode.ExtensionContext, repos: string[]) {
           void findGitRepos(paths, config.gitPath(), config.maxDepthOfRepoSearch()).then(
             (repoDirs) => {
               if (repoDirs.length > 0) {
-              repoManager.setRepos(repoDirs);
-              repoManager.sendRepos();
-            }
+                repoManager.setRepos(repoDirs);
+                repoManager.sendRepos();
+              }
             }
           );
         }
