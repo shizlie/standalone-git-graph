@@ -505,6 +505,7 @@ class GitGraphView {
     }
 
     addListenerToClass("commit", "contextmenu", (e: Event) => {
+      e.preventDefault();
       e.stopPropagation();
       let sourceElem = <HTMLElement>(<Element>e.target).closest(".commit")!;
       let hash = sourceElem.dataset.hash!;
@@ -762,6 +763,7 @@ class GitGraphView {
       }
     });
     addListenerToClass("gitRef", "contextmenu", (e: Event) => {
+      e.preventDefault();
       e.stopPropagation();
       let sourceElem = <HTMLElement>(<Element>e.target).closest(".gitRef")!;
       let refName = unescapeHtml(sourceElem.dataset.name!),

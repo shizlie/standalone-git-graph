@@ -35,12 +35,17 @@
   },
   "publisher": "asispts",
   "main": "./out/extension.js",
+  "bin": {
+    "gitgraph": "./out/cli.js"
+  },
   "scripts": {
     "typecheck": "tsc -p ./src --noEmit && tsc -p ./src/webview --noEmit && tsc -p ./tests --noEmit",
     "vscode:prepublish": "pnpm run clean && pnpm run package",
     "package": "pnpm run typecheck && pnpm run lint && node esbuild.js --production",
     "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
     "compile": "pnpm run clean && node esbuild.js",
+    "standalone": "node esbuild.js",
+    "start": "node out/cli.js",
     "test": "vitest run --project backend && vitest run --project webview",
     "test:ext": "pnpm run compile && pnpm run compile-tests && vscode-test",
     "compile-tests": "tsc -p tests/extension/tsconfig.json && tsc-alias -p tests/extension/tsconfig.json",
@@ -53,7 +58,9 @@
     "l10n:check": "node ./scripts/check-l10n.js"
   },
   "dependencies": {
-    "simple-git": "^3.36.0"
+    "@types/ws": "^8.18.1",
+    "simple-git": "^3.36.0",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
