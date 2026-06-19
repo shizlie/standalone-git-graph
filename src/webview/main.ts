@@ -889,6 +889,28 @@ class GitGraphView {
             {
               title: l10n.checkoutBranch + ELLIPSIS,
               onClick: () => this.checkoutBranchAction(sourceElem, refName)
+            },
+            {
+              title: l10n.deleteRemoteBranch + ELLIPSIS,
+              onClick: () => {
+                const slashIdx = refName.indexOf("/");
+                const remoteName = refName.substring(0, slashIdx);
+                const branchOnRemote = refName.substring(slashIdx + 1);
+                showConfirmationDialog(
+                  l10n.dialogDeleteConfirm
+                    .replace("{0}", l10n.labelRemoteBranch)
+                    .replace("{1}", "<b><i>" + escapeHtml(refName) + "</i></b>"),
+                  () => {
+                    sendMessage({
+                      command: "deleteRemoteBranch",
+                      repo: this.currentRepo!,
+                      remoteName,
+                      branchName: branchOnRemote
+                    });
+                  },
+                  sourceElem
+                );
+              }
             }
           ];
         }
@@ -1290,6 +1312,9 @@ window.addEventListener("message", (event) => {
       break;
     case "deleteBranch":
       refreshGraphOrDisplayError(msg.status, l10n.unableToDeleteBranch);
+      break;
+    case "deleteRemoteBranch":
+      refreshGraphOrDisplayError(msg.status, l10n.unableToDeleteRemoteBranch);
       break;
     case "deleteTag":
       refreshGraphOrDisplayError(msg.status, l10n.unableToDeleteTag);

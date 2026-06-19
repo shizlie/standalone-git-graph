@@ -62,7 +62,7 @@ const DEFAULT_GRAPH_COLOURS = [
 export function defaultOptions(): StandaloneOptions {
   return {
     repo: [],
-    port: 0,
+    port: 8765,
     host: "127.0.0.1",
     open: true,
     printUrl: false,

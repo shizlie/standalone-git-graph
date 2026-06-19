@@ -22,6 +22,25 @@ import { createConfig, defaultOptions, type StandaloneOptions } from "@/standalo
 import { startServer } from "@/standalone/server";
 
 function openBrowser(url: string): void {
+  // VS Code / Cursor / Windsurf integrated terminal: open in Simple Browser
+  if (process.env.TERM_PROGRAM === "vscode" || process.env.VSCODE_IPC_HOOK_CLI) {
+    try {
+      child_process.spawn("code", ["--open-url", url], { detached: true, stdio: "ignore" }).unref();
+      return;
+    } catch {
+      /* fall through to system browser */
+    }
+  }
+  // Orca: open in integrated browser panel
+  if (process.env.ORCA_WORKSPACE !== undefined) {
+    try {
+      child_process.spawn("orca", ["open", url], { detached: true, stdio: "ignore" }).unref();
+      return;
+    } catch {
+      /* fall through to system browser */
+    }
+  }
+  // System browser fallback
   const cmd =
     process.platform === "darwin"
       ? "open"
@@ -79,8 +98,7 @@ function parseCli(): StandaloneOptions {
         "",
         "OPTIONS",
         "  --repo <path>           Repository to show (repeatable; default: CWD)",
-        "  --port <n>              Port (0 = free port; default 0)",
-        "  --host <addr>           Bind address (default 127.0.0.1)",
+        "  --port <n>              Port to bind (default 8765; increments if in use)",
         "  --no-open               Don't auto-open a browser tab",
         "  --print-url             Print the URL to stdout (for orca/scripts)",
         "  --theme dark|light      UI theme (default dark)",

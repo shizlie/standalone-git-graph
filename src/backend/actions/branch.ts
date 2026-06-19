@@ -33,3 +33,10 @@ export async function checkoutBranch(
     await git.checkoutBranch(input.branchName, input.remoteBranch);
   }
 }
+
+export async function deleteRemoteBranch(
+  git: SimpleGit,
+  input: ActionPayload<"deleteRemoteBranch">
+): Promise<void> {
+  await git.raw(["push", input.remoteName, "--delete", input.branchName]);
+}

@@ -37,7 +37,7 @@ export function getWebviewLocalizedStrings() {
     unableToCherryPick: l10n.t("error.unableToCherryPick"),
     unableToCreateBranch: l10n.t("error.unableToCreateBranch"),
     unableToDeleteBranch: l10n.t("error.unableToDeleteBranch"),
-    unableToDeleteTag: l10n.t("error.unableToDeleteTag"),
+    unableToDeleteRemoteBranch: l10n.t("error.unableToDeleteRemoteBranch"),
     unableToMergeBranch: l10n.t("error.unableToMergeBranch"),
     unableToMergeCommit: l10n.t("error.unableToMergeCommit"),
     unableToPushTag: l10n.t("error.unableToPushTag"),
@@ -62,6 +62,7 @@ export function getWebviewLocalizedStrings() {
     checkoutBranch: l10n.t("action.checkoutBranch"),
     renameBranch: l10n.t("action.renameBranch"),
     deleteBranch: l10n.t("action.deleteBranch"),
+    deleteRemoteBranch: l10n.t("action.deleteRemoteBranch"),
 
     typeCommitHash: l10n.t("type.commitHash"),
     typeTagName: l10n.t("type.tagName"),
@@ -70,7 +71,7 @@ export function getWebviewLocalizedStrings() {
     // label
     labelTag: l10n.t("label.tag"),
     labelBranch: l10n.t("label.branch"),
-    labelCurrentBranch: l10n.t("label.currentBranch"),
+    labelRemoteBranch: l10n.t("label.remoteBranch"),
 
     // Dialog
     dialogAddTagTitle: l10n.t("dialog.addTag.title"),

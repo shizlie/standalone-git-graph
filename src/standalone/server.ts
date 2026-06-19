@@ -46,11 +46,30 @@ export type Server = {
   close: () => void;
 };
 
-export function startServer(
+/** Probe ports starting from `start` until one is free, up to `maxAttempts`. */
+function findAvailablePort(start: number, host: string, maxAttempts = 20): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let attempt = 0;
+    const tryPort = (p: number) => {
+      const probe = http.createServer();
+      probe.once("error", () => {
+        if (++attempt < maxAttempts) {
+          tryPort(p + 1);
+        } else {
+          reject(new Error(`No available port in range ${start}–${start + maxAttempts - 1}`));
+        }
+      });
+      probe.listen(p, host, () => probe.close(() => resolve(p)));
+    };
+    tryPort(start);
+  });
+}
+
+export async function startServer(
   config: Config,
   options: StandaloneOptions,
   assetRoot: string
-): Server {
+): Promise<Server> {
   const state = new StandaloneState(
     options.stateFile ||
       path.join(process.env.HOME ?? process.cwd(), ".gitgraph", "state.json")
@@ -124,14 +143,16 @@ export function startServer(
     ws.on("close", () => h.dispose());
   });
 
+  const port = await findAvailablePort(options.port, options.host);
+
   return new Promise<Server>((resolve, reject) => {
     httpServer.on("error", reject);
-    httpServer.listen(options.port, options.host, () => {
+    httpServer.listen(port, options.host, () => {
       const addr = httpServer.address();
-      const port = typeof addr === "object" && addr ? addr.port : options.port;
+      const actualPort = typeof addr === "object" && addr ? addr.port : port;
       resolve({
-        url: `http://${options.host}:${port}`,
-        port,
+        url: `http://${options.host}:${actualPort}`,
+        port: actualPort,
         close: () => {
           for (const h of handlers) h.dispose();
           wss.close();
