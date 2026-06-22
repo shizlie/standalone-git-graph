@@ -12,6 +12,7 @@ export function getWebviewLocalizedStrings() {
     branch: l10n.t("ui.branch"),
     showRemoteBranches: l10n.t("ui.showRemoteBranches"),
     refresh: l10n.t("ui.refresh"),
+    pull: l10n.t("ui.pull"),
     locateHead: l10n.t("ui.locateHead"),
     loading: l10n.t("ui.loading"),
     loadMore: l10n.t("ui.loadMore"),
@@ -44,6 +45,7 @@ export function getWebviewLocalizedStrings() {
     unableToRenameBranch: l10n.t("error.unableToRenameBranch"),
     unableToReset: l10n.t("error.unableToReset"),
     unableToRevert: l10n.t("error.unableToRevert"),
+    unableToPull: l10n.t("error.unableToPull"),
     invalidCharacters: l10n.t("error.invalidCharacters"),
 
     // Actions

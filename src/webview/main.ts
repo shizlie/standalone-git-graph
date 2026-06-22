@@ -85,6 +85,9 @@ class GitGraphView {
     document.getElementById("refreshBtn")!.addEventListener("click", () => {
       this.refresh(true);
     });
+    document.getElementById("pullBtn")!.addEventListener("click", () => {
+      sendMessage({ command: "pull", repo: this.currentRepo! });
+    });
     const blinkBtn = document.getElementById("blinkHeadBtn");
     if (blinkBtn) {
       blinkBtn.addEventListener("click", () => {
@@ -1318,6 +1321,9 @@ window.addEventListener("message", (event) => {
       break;
     case "deleteTag":
       refreshGraphOrDisplayError(msg.status, l10n.unableToDeleteTag);
+      break;
+    case "pull":
+      refreshGraphOrDisplayError(msg.status, l10n.unableToPull);
       break;
     case "fetchAvatar":
       gitGraph.loadAvatar(msg.email, msg.image);

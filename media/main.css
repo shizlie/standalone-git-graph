@@ -403,10 +403,22 @@ svg.fileIcon {
   border-radius: 11px;
   margin-top: -12px;
 }
+/* Make the Pull button match the refresh button style */
+#pullBtn {
+  position: absolute;
+  right: 96px;
+  top: 50%;
+  width: 80px;
+  height: 22px;
+  line-height: 22px;
+  border-radius: 11px;
+  margin-top: -12px;
+  text-align: center;
+}
 /* Make the Locate HEAD button match the refresh button style but smaller */
 #blinkHeadBtn {
   position: absolute;
-  right: 96px;
+  right: 184px;
   top: 50%;
   width: 120px;
   height: 22px;
