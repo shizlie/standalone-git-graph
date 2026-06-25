@@ -23,7 +23,7 @@ import {
 } from "@/backend/actions/commit";
 import { mergeBranch, mergeCommit } from "@/backend/actions/merge";
 import { addTag, deleteTag, pushTag } from "@/backend/actions/tag";
-import { pull as pullAction } from "@/backend/actions/pull";
+import { sync as syncAction } from "@/backend/actions/sync";
 import { commitDetails } from "@/backend/queries/commitDetails";
 import { loadBranches } from "@/backend/queries/loadBranches";
 import { loadCommits } from "@/backend/queries/loadCommits";
@@ -76,7 +76,7 @@ export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps
   registerAction("resetToCommit", (msg) => resetToCommit(gitClient.getInstance(), msg));
   registerAction("mergeBranch", (msg) => mergeBranch(gitClient.getInstance(), msg));
   registerAction("mergeCommit", (msg) => mergeCommit(gitClient.getInstance(), msg));
-  registerAction("pull", (msg) => pullAction(gitClient.getInstance(), msg));
+  registerAction("sync", (msg) => syncAction(gitClient.getInstance(), msg));
 
   // --- Query handlers ---
   bridge.onMessage("loadCommits", async (msg) => {

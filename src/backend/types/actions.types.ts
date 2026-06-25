@@ -14,7 +14,7 @@ type ActionPayloads = {
   mergeCommit: { commitHash: string; createNewCommit: boolean };
   pushTag: { tagName: string };
   deleteRemoteBranch: { remoteName: string; branchName: string };
-  pull: {};
+  sync: {};
   renameBranch: { oldName: string; newName: string };
   resetToCommit: { commitHash: string; resetMode: GitResetMode };
   revertCommit: { commitHash: string; parentIndex: number };

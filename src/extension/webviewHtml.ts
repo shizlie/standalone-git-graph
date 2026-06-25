@@ -64,7 +64,7 @@ export function buildWebviewHtml(opts: {
 			<span id="repoControl"><span class="unselectable">${l10nStrings.repo}: </span><div id="repoSelect" class="dropdown"></div></span>
 			<span id="branchControl"><span class="unselectable">${l10nStrings.branch}: </span><div id="branchSelect" class="dropdown"></div></span>
 			<label id="showRemoteBranchesControl"><input type="checkbox" id="showRemoteBranchesCheckbox" value="1" checked>${l10nStrings.showRemoteBranches}</label>
-      <div id="pullBtn" class="roundedBtn">${l10nStrings.pull}</div>
+      <div id="syncBtn" class="roundedBtn">${l10nStrings.sync}</div>
       <div id="refreshBtn" class="roundedBtn">${l10nStrings.refresh}</div>
       <div id="blinkHeadBtn" class="roundedBtn">${l10nStrings.locateHead}</div>
 		</div>
