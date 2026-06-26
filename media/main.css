@@ -403,8 +403,8 @@ svg.fileIcon {
   border-radius: 11px;
   margin-top: -12px;
 }
-/* Make the Pull button match the refresh button style */
-#pullBtn {
+/* Make the Sync button match the refresh button style */
+#syncBtn {
   position: absolute;
   right: 96px;
   top: 50%;
