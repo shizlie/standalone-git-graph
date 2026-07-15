@@ -31,6 +31,7 @@ export function setupHtml(viewState: GG.GitGraphViewState) {
         <input type="checkbox" id="showRemoteBranchesCheckbox" checked>
         Show Remote Branches
       </label>
+      <div id="syncBtn" class="roundedBtn">Sync</div>
       <div id="refreshBtn" class="roundedBtn">Refresh</div>
       <div id="blinkHeadBtn" class="roundedBtn">Locate HEAD</div>
     </div>

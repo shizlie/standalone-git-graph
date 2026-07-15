@@ -136,7 +136,8 @@ export async function startServer(
   const handlers: Array<ReturnType<typeof registerMessageHandlers>> = [];
 
   wss.on("connection", (ws) => {
-    const gitClient = gitClientFactory(state.getLastActiveRepo() ?? "", config.gitPath());
+    // The persisted active repo may have been deleted; loadRepos selects a valid repo before queries.
+    const gitClient = gitClientFactory(process.cwd(), config.gitPath());
     const bridge = createBridge(ws);
     const h = registerMessageHandlers(bridge, { config, gitClient, repoManager, state });
     handlers.push(h);
