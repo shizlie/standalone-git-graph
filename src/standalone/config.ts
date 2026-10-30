@@ -5,10 +5,20 @@
  * VS Code workspace configuration.
  */
 import { DateType } from "@/backend/types";
+import { DEFAULT_EXCLUDES } from "@/standalone/repoManager";
 import { DateFormat, GraphStyle } from "@/types";
 
 export type StandaloneOptions = {
+  /** Folders scanned for repos. */
+  roots: string[];
+  /** Explicit repos (always shown, even inside an excluded folder). */
   repo: string[];
+  /** Folder names (or root-relative paths) skipped while scanning roots. */
+  exclude: string[];
+  /** Minutes between background syncs; 0 = off. */
+  syncIntervalMin: number;
+  /** Let background sync push a default branch that is only ahead of its upstream. */
+  autoPush: boolean;
   port: number;
   host: string;
   open: boolean;
@@ -59,15 +69,21 @@ const DEFAULT_GRAPH_COLOURS = [
   "#ffcc00"
 ];
 
+export const DEFAULT_PORT = 1234;
+
 export function defaultOptions(): StandaloneOptions {
   return {
+    roots: [],
     repo: [],
-    port: 8765,
+    exclude: [...DEFAULT_EXCLUDES],
+    syncIntervalMin: 5,
+    autoPush: true,
+    port: DEFAULT_PORT,
     host: "127.0.0.1",
     open: true,
     printUrl: false,
     theme: "dark",
-    maxDepthOfRepoSearch: 0,
+    maxDepthOfRepoSearch: 3,
     autoCenterCommitDetailsView: true,
     dateFormat: "Date & Time",
     dateType: "Author Date",

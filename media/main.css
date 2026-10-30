@@ -415,6 +415,34 @@ svg.fileIcon {
   margin-top: -12px;
   text-align: center;
 }
+#syncBtn.busy {
+  opacity: 0.6;
+  pointer-events: none;
+}
+/* Standalone: last sync result, left side of the controls bar */
+#syncStatus {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  margin-top: -12px;
+  height: 22px;
+  line-height: 22px;
+  max-width: calc(50% - 260px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  font-size: 12px;
+  opacity: 0.75;
+}
+#syncStatus.warn {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+  opacity: 1;
+}
+#syncStatus.error {
+  color: var(--vscode-gitDecoration-deletedResourceForeground);
+  opacity: 1;
+}
 /* Make the Locate HEAD button match the refresh button style but smaller */
 #blinkHeadBtn {
   position: absolute;

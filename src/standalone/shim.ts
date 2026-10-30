@@ -10,6 +10,14 @@
  * webview's existing `window.addEventListener("message", …)` listener fires
  * unchanged. The webview source (`src/webview/*`) is compiled untouched.
  *
+ * `/?repo=<path>` (opened by `gitgraph <repo>`) drops the saved view state when
+ * it belongs to another repo, so the server's choice of repo wins, then strips
+ * the parameter from the address bar.
+ *
+ * When the tab becomes visible again it asks the webview for a soft refresh —
+ * this picks up working-tree edits, which the server's `.git` watcher can't see,
+ * without any polling.
+ *
  * Two commands are intercepted client-side and never forwarded to the server,
  * because only the browser can fulfil them:
  *   - `copyToClipboard` → `navigator.clipboard.writeText`
@@ -38,12 +46,19 @@ function isRequestLike(msg: unknown): msg is RequestLike {
 
 const STATE_KEY = "gitgraph.webviewState";
 
+const requestedRepo = new URLSearchParams(window.location.search).get("repo");
+if (requestedRepo !== null) {
+  window.history.replaceState(null, "", window.location.pathname);
+}
+
 function acquireVsCodeApi(): VsCodeApiShim {
   return {
     getState(): WebViewStateish | null {
       try {
         const raw = localStorage.getItem(STATE_KEY);
-        return raw ? (JSON.parse(raw) as WebViewStateish) : null;
+        const state = raw ? (JSON.parse(raw) as WebViewStateish) : null;
+        if (state && requestedRepo !== null && state.currentRepo !== requestedRepo) return null;
+        return state;
       } catch {
         return null;
       }
@@ -136,3 +151,7 @@ const GitGraphBridge = (() => {
 })();
 
 GitGraphBridge.connect();
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") dispatch({ command: "refresh" });
+});

@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { once } from "node:events";
+import * as net from "node:net";
 import { afterEach, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
 
@@ -39,4 +40,27 @@ test("accepts a WebSocket connection when the persisted active repository was re
 
   await expect(once(socket, "open")).resolves.toBeDefined();
   socket.close();
+});
+
+test("moves to the next port when the requested one is taken", async () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "gitgraph-state-"));
+  tempDirs.push(stateDir);
+  const blocker = net.createServer();
+  await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+  const taken = (blocker.address() as net.AddressInfo).port;
+
+  const options = {
+    ...defaultOptions(),
+    open: false,
+    port: taken,
+    syncIntervalMin: 0,
+    stateFile: path.join(stateDir, "state.json")
+  };
+  try {
+    const server = await startServer(createConfig(options), options, path.resolve("."));
+    servers.push(server);
+    expect(server.port).toBeGreaterThan(taken);
+  } finally {
+    blocker.close();
+  }
 });

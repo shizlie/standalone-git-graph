@@ -1,18 +1,82 @@
 /**
- * Standalone replacement for `src/extension/repoManager.ts`. No VS Code
- * workspace API — repo discovery comes from CLI `--repo` arguments and an
- * optional shallow subdirectory search from CWD. Keeps the method surface the
- * message handler expects (`getRepos`, `setRepoState`, `checkReposExist`,
- * `sendRepos`, `registerViewCallback`).
+ * Standalone repo list. Two sources:
+ *
+ *   - roots: folders scanned for repos (`gitgraph ~/Codes`). Pure fs, no git
+ *     processes: a directory containing a `.git` *directory* is a repo.
+ *     Directories with a `.git` *file* (linked worktrees, submodules), hidden
+ *     dirs, symlinks and excluded names (default: workspace, workspaces,
+ *     worktrees, node_modules) are skipped. Rescanned periodically so new
+ *     clones show up without a restart.
+ *   - explicit repos: `--repo <path>` or a positional path that is itself a
+ *     repo/worktree. Always shown, even inside an excluded folder.
+ *
+ * Per-repo UI state (column widths) persists in the state file.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { isGitRepository } from "@/backend/utils/git";
-import { evalPromises } from "@/backend/utils/promise";
-import type { Config } from "@/standalone/config";
 import type { StandaloneState } from "@/standalone/state";
 import type { GitRepoSet, GitRepoState } from "@/types";
+
+export const DEFAULT_EXCLUDES = ["workspace", "workspaces", "worktrees", "node_modules"];
+
+export type ScanOptions = { maxDepth: number; exclude: string[] };
+
+function isExcluded(root: string, dir: string, name: string, exclude: string[]): boolean {
+  if (name.startsWith(".")) return true;
+  const rel = path.relative(root, dir).split(path.sep).join("/");
+  return exclude.some((x) => (x.includes("/") ? rel === x.replace(/\/+$/, "") : name === x));
+}
+
+/** Find repos under `root` (depth-limited, fs only). `root` itself counts if it is a repo. */
+export function scanForRepos(root: string, opts: ScanOptions): string[] {
+  const found: string[] = [];
+  const walk = (dir: string, depth: number) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const dotGit = entries.find((e) => e.name === ".git");
+    if (dotGit) {
+      if (dotGit.isDirectory()) found.push(dir);
+      return; // a repo (or worktree/submodule): don't descend
+    }
+    if (depth >= opts.maxDepth) return;
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const child = path.join(dir, e.name);
+      if (isExcluded(root, child, e.name, opts.exclude)) continue;
+      walk(child, depth + 1);
+    }
+  };
+  walk(root, 0);
+  return found;
+}
+
+export type RepoManager = {
+  getRepos: () => GitRepoSet;
+  getRepoPaths: () => string[];
+  setRepoState: (repo: string, state: GitRepoState) => void;
+  /** Rescan roots and re-check explicit repos; returns true if the list changed. */
+  refresh: () => Promise<boolean>;
+  checkReposExist: () => Promise<boolean>;
+  /** Add roots / explicit repos at runtime (`gitgraph <path>` against a running server). */
+  add: (spec: { roots?: string[]; repos?: string[] }) => Promise<void>;
+  onChange: (cb: (repos: GitRepoSet) => void) => () => void;
+  dispose: () => void;
+};
+
+export type RepoManagerOptions = {
+  roots: string[];
+  repos: string[];
+  scan: ScanOptions;
+  gitPath: string;
+  /** Rescan interval; 0 disables. */
+  rescanMs: number;
+};
 
 function sortRepos(repos: GitRepoSet): GitRepoSet {
   const sorted: GitRepoSet = {};
@@ -20,162 +84,66 @@ function sortRepos(repos: GitRepoSet): GitRepoSet {
   return sorted;
 }
 
-function resolveRepoArg(arg: string): string {
-  return path.resolve(arg);
-}
-
-/** Recursively scan `root` up to `maxDepth` for `.git` directories. */
-function discoverRepos(root: string, maxDepth: number, found: string[]): void {
-  if (maxDepth < 0) return;
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(root, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  if (entries.some((e) => e.name === ".git")) {
-    found.push(root);
-    return; // don't descend into a repo's own subdirs
-  }
-  if (maxDepth === 0) return;
-  for (const e of entries) {
-    if (!e.isDirectory()) continue;
-    if (e.name === "node_modules" || e.name === ".git") continue;
-    discoverRepos(path.join(root, e.name), maxDepth - 1, found);
-  }
-}
-
-export type RepoManager = {
-  registerViewCallback: (cb: (repos: GitRepoSet, numRepos: number) => void) => void;
-  deregisterViewCallback: () => void;
-  getRepos: () => GitRepoSet;
-  isDirectoryWithinRepos: (p: string) => boolean;
-  sendRepos: () => void;
-  addRepo: (repo: string) => void;
-  removeRepo: (repo: string) => void;
-  removeReposWithinFolder: (p: string) => boolean;
-  setRepoState: (repo: string, state: GitRepoState) => void;
-  removeReposNotInWorkspace: () => void;
-  checkReposExist: () => Promise<boolean>;
-};
-
-export function createRepoManager(
+export async function createRepoManager(
   state: StandaloneState,
-  config: Config,
-  options: { repoArgs: string[]; cwd: string }
-): RepoManager {
-  let repos = state.getRepos();
-  let viewCallback: ((repos: GitRepoSet, numRepos: number) => void) | null = null;
+  options: RepoManagerOptions
+): Promise<RepoManager> {
+  const roots = new Set(options.roots.map((r) => path.resolve(r)));
+  const explicit = new Set(options.repos.map((r) => path.resolve(r)));
+  const saved = state.getRepos();
+  let repos: GitRepoSet = {};
+  const listeners = new Set<(repos: GitRepoSet) => void>();
 
-  function save() {
+  async function discover(): Promise<string[]> {
+    const out = new Set<string>();
+    for (const root of roots) for (const r of scanForRepos(root, options.scan)) out.add(r);
+    for (const r of explicit) {
+      if (out.has(r)) continue;
+      // oxlint-disable-next-line no-await-in-loop -- one at a time on purpose
+      if (await isGitRepository(r, options.gitPath)) out.add(r);
+    }
+    return Array.from(out).sort(); // oxlint-disable-line no-array-sort -- fresh array
+  }
+
+  async function refresh(): Promise<boolean> {
+    const next = await discover();
+    const prev = Object.keys(repos).sort(); // oxlint-disable-line no-array-sort -- fresh array
+    if (next.length === prev.length && next.every((p, i) => p === prev[i])) return false;
+    const updated: GitRepoSet = {};
+    for (const p of next) updated[p] = repos[p] ?? saved[p] ?? { columnWidths: null };
+    repos = updated;
     state.saveRepos(repos);
-  }
-
-  function removeRepo(repo: string) {
-    delete repos[repo];
-    save();
-  }
-
-  function addRepo(repo: string) {
-    repos[repo] = { columnWidths: null };
-    save();
-  }
-
-  function sendRepos() {
     const sorted = sortRepos(repos);
-    viewCallback?.(sorted, Object.keys(sorted).length);
+    for (const l of listeners) l(sorted);
+    return true;
   }
 
-  function isDirectoryWithinRepos(p: string) {
-    for (const rp of Object.keys(repos)) {
-      if (p === rp || p.startsWith(rp + "/")) return true;
-    }
-    return false;
-  }
-
-  function removeReposWithinFolder(p: string) {
-    const folder = p + "/";
-    let changed = false;
-    for (const rp of Object.keys(repos)) {
-      if (rp === p || rp.startsWith(folder)) {
-        removeRepo(rp);
-        changed = true;
-      }
-    }
-    return changed;
-  }
-
-  function setRepoState(repo: string, st: GitRepoState) {
-    repos[repo] = st;
-    save();
-  }
-
-  function removeReposNotInWorkspace() {
-    // Standalone: "workspace" = the explicit --repo args + CWD (if it's a repo).
-    // Any previously-saved repo outside those roots is dropped.
-    const roots = new Set<string>();
-    for (const arg of options.repoArgs) roots.add(resolveRepoArg(arg));
-    roots.add(resolveRepoArg(options.cwd));
-    for (const rp of Object.keys(repos)) {
-      let keep = false;
-      for (const root of roots) {
-        if (rp === root || rp.startsWith(root + "/")) {
-          keep = true;
-          break;
-        }
-      }
-      if (!keep) removeRepo(rp);
-    }
-  }
-
-  async function checkReposExist() {
-    const paths = Object.keys(repos);
-    const results = await evalPromises(paths, 3, (p) => isGitRepository(p, config.gitPath()));
-    let changed = false;
-    for (let i = 0; i < paths.length; i++) {
-      if (!results[i]) {
-        removeRepo(paths[i]);
-        changed = true;
-      }
-    }
-    if (changed) sendRepos();
-    return changed;
-  }
-
-  // Seed: explicit --repo args, plus shallow discovery from CWD.
-  void (async () => {
-    removeReposNotInWorkspace();
-    const candidates: string[] = [];
-    for (const arg of options.repoArgs) candidates.push(resolveRepoArg(arg));
-    if (options.repoArgs.length === 0) {
-      candidates.push(resolveRepoArg(options.cwd));
-    }
-    // Optional shallow discovery from CWD when no explicit repos given.
-    if (options.repoArgs.length === 0 && config.maxDepthOfRepoSearch() > 0) {
-      discoverRepos(resolveRepoArg(options.cwd), config.maxDepthOfRepoSearch(), candidates);
-    }
-    const results = await evalPromises(candidates, 3, (p) => isGitRepository(p, config.gitPath()));
-    for (let i = 0; i < candidates.length; i++) {
-      if (results[i] && !repos[candidates[i]]) addRepo(candidates[i]);
-    }
-    if (!(await checkReposExist())) sendRepos();
-  })();
+  await refresh();
+  const timer = options.rescanMs > 0 ? setInterval(() => void refresh(), options.rescanMs) : null;
+  timer?.unref();
 
   return {
-    registerViewCallback: (cb) => {
-      viewCallback = cb;
-    },
-    deregisterViewCallback: () => {
-      viewCallback = null;
-    },
     getRepos: () => sortRepos(repos),
-    isDirectoryWithinRepos,
-    sendRepos,
-    addRepo,
-    removeRepo,
-    removeReposWithinFolder,
-    setRepoState,
-    removeReposNotInWorkspace,
-    checkReposExist
+    getRepoPaths: () => Object.keys(repos).sort(),
+    setRepoState(repo, st) {
+      if (!repos[repo]) return;
+      repos[repo] = st;
+      state.saveRepos(repos);
+    },
+    refresh,
+    checkReposExist: refresh,
+    async add(spec) {
+      for (const r of spec.roots ?? []) roots.add(path.resolve(r));
+      for (const r of spec.repos ?? []) explicit.add(path.resolve(r));
+      await refresh();
+    },
+    onChange(cb) {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    dispose() {
+      if (timer) clearInterval(timer);
+      listeners.clear();
+    }
   };
 }

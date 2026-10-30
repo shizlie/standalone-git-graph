@@ -2,12 +2,12 @@
  * Standalone replacement for `src/extension/messageHandler.ts`. Binds the same
  * message protocol to the pure-git action/query handlers (reused verbatim from
  * `src/backend/*`), minus the two commands the browser shim fulfils client-side
- * (`copyToClipboard`, `viewDiff`). Also watches the repo's `.git` directory for
- * external changes and pushes a `refresh` message so the UI stays live.
+ * (`copyToClipboard`, `viewDiff`). One instance per browser tab.
+ *
+ * Live updates: subscribes to the shared `.git` watcher for the selected repo
+ * (→ `refresh`), to repo-list changes (→ `loadRepos`), and to sync status
+ * (→ `syncStatus`). The "Sync" button runs the safe sync in `autoSync.ts`.
  */
-import * as fs from "node:fs";
-import * as path from "node:path";
-
 import {
   checkoutBranch,
   createBranch,
@@ -23,14 +23,15 @@ import {
 } from "@/backend/actions/commit";
 import { mergeBranch, mergeCommit } from "@/backend/actions/merge";
 import { addTag, deleteTag, pushTag } from "@/backend/actions/tag";
-import { sync as syncAction } from "@/backend/actions/sync";
 import { commitDetails } from "@/backend/queries/commitDetails";
 import { loadBranches } from "@/backend/queries/loadBranches";
 import { loadCommits } from "@/backend/queries/loadCommits";
 import type { GitClient } from "@/backend/gitClient";
+import type { AutoSync, RepoSyncStatus } from "@/standalone/autoSync";
 import type { Config } from "@/standalone/config";
 import type { Bridge } from "@/standalone/bridge";
 import type { RepoManager } from "@/standalone/repoManager";
+import type { RepoWatchHub } from "@/standalone/repoWatcher";
 import type { StandaloneState } from "@/standalone/state";
 import type { RequestMessage, ResponseMessage } from "@/types";
 
@@ -39,12 +40,30 @@ export type MessageHandlerDeps = {
   gitClient: GitClient;
   repoManager: RepoManager;
   state: StandaloneState;
+  watchHub: RepoWatchHub;
+  autoSync: AutoSync;
 };
 
+/** Opening a repo triggers a background sync if the last one is older than this. */
+const SYNC_ON_OPEN_MAX_AGE_MS = 60_000;
+
 export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps) {
-  const { config, gitClient, repoManager, state } = deps;
+  const { config, gitClient, repoManager, state, watchHub, autoSync } = deps;
   let currentRepo: string | null = null;
-  let watcher: fs.FSWatcher | null = null;
+  let unwatch: (() => void) | null = null;
+
+  const postStatus = (s: RepoSyncStatus) =>
+    bridge.post({ command: "syncStatus", ...s } as ResponseMessage);
+  const offStatus = autoSync.onStatus((s) => {
+    if (s.repo === currentRepo) postStatus(s);
+  });
+  const offRepos = repoManager.onChange((repos) => {
+    bridge.post({
+      command: "loadRepos",
+      repos,
+      lastActiveRepo: state.getLastActiveRepo()
+    } as ResponseMessage);
+  });
 
   function registerAction<T extends RequestMessage["command"]>(
     command: T,
@@ -76,7 +95,7 @@ export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps
   registerAction("resetToCommit", (msg) => resetToCommit(gitClient.getInstance(), msg));
   registerAction("mergeBranch", (msg) => mergeBranch(gitClient.getInstance(), msg));
   registerAction("mergeCommit", (msg) => mergeCommit(gitClient.getInstance(), msg));
-  registerAction("sync", (msg) => syncAction(gitClient.getInstance(), msg));
+  registerAction("sync", (msg) => autoSync.syncNow(msg.repo));
 
   // --- Query handlers ---
   bridge.onMessage("loadCommits", async (msg) => {
@@ -116,12 +135,22 @@ export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps
   });
 
   // --- Infrastructure handlers ---
+  function activate(repo: string) {
+    currentRepo = repo;
+    gitClient.setRepo(repo);
+    state.setLastActiveRepo(repo);
+    unwatch?.();
+    unwatch = watchHub.subscribe(repo, () =>
+      bridge.post({ command: "refresh" } as ResponseMessage)
+    );
+    const status = autoSync.getStatus(repo);
+    if (status) postStatus(status);
+    autoSync.syncIfStale(repo, SYNC_ON_OPEN_MAX_AGE_MS);
+  }
+
   bridge.onMessage("selectRepo", (msg) => {
-    if (msg.repo === currentRepo) return;
-    currentRepo = msg.repo;
-    gitClient.setRepo(msg.repo);
-    state.setLastActiveRepo(msg.repo);
-    startWatcher(msg.repo);
+    if (msg.repo === currentRepo || !repoManager.getRepos()[msg.repo]) return;
+    activate(msg.repo);
   });
 
   bridge.onMessage("loadRepos", async (msg) => {
@@ -132,13 +161,8 @@ export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps
       // present, else the first repo. The webview never sends selectRepo on
       // initial load, so the server must sync the gitClient here.
       const repoPaths = Object.keys(repos);
-      const pick = lastActive && repos[lastActive] ? lastActive : repoPaths[0] ?? null;
-      if (pick && pick !== currentRepo) {
-        currentRepo = pick;
-        gitClient.setRepo(pick);
-        state.setLastActiveRepo(pick);
-        startWatcher(pick);
-      }
+      const pick = lastActive && repos[lastActive] ? lastActive : (repoPaths[0] ?? null);
+      if (pick && pick !== currentRepo) activate(pick);
       bridge.post({
         command: "loadRepos",
         repos,
@@ -151,25 +175,12 @@ export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps
     repoManager.setRepoState(msg.repo, msg.state);
   });
 
-  function startWatcher(repo: string) {
-    watcher?.close();
-    const gitDir = path.join(repo, ".git");
-    try {
-      watcher = fs.watch(gitDir, { recursive: true }, () => {
-        bridge.post({ command: "refresh" } as ResponseMessage);
-      });
-    } catch {
-      /* .git may be a file (worktree) or unreadable — skip watching */
-    }
-  }
-
   return {
-    onPanelShown: () => {
-      currentRepo = null;
-    },
     dispose: () => {
-      watcher?.close();
-      watcher = null;
+      unwatch?.();
+      unwatch = null;
+      offStatus();
+      offRepos();
     }
   };
 }

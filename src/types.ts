@@ -97,6 +97,15 @@ export type ResponseRefresh = {
   command: "refresh";
 };
 
+/** Standalone only: background/manual sync state of a repo. */
+export type ResponseSyncStatus = {
+  command: "syncStatus";
+  repo: string;
+  level: "ok" | "busy" | "warn" | "error";
+  text: string;
+  at: number;
+};
+
 export type RequestMessage =
   | ActionRequest
   | QueryRequest
@@ -114,4 +123,5 @@ export type ResponseMessage =
   | ResponseLoadRepos
   | ResponseCopyToClipboard
   | ResponseViewDiff
-  | ResponseRefresh;
+  | ResponseRefresh
+  | ResponseSyncStatus;

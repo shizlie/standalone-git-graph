@@ -58,6 +58,7 @@ class GitGraphView {
     this.footerElem = document.getElementById("footer")!;
     this.repoDropdown = new Dropdown("repoSelect", true, l10n.repo, (value) => {
       this.currentRepo = value;
+      this.clearSyncStatus();
       this.maxCommits = this.config.initialLoadCommits;
       this.expandedCommit = null;
       this.currentBranch = null;
@@ -86,6 +87,7 @@ class GitGraphView {
       this.refresh(true);
     });
     document.getElementById("syncBtn")!.addEventListener("click", () => {
+      document.getElementById("syncBtn")!.classList.add("busy");
       sendMessage({ command: "sync", repo: this.currentRepo! });
     });
     const blinkBtn = document.getElementById("blinkHeadBtn");
@@ -292,6 +294,23 @@ class GitGraphView {
       if (avatarsElems[i].dataset.email === escapedEmail) {
         avatarsElems[i].innerHTML = '<img class="avatarImg" src="' + image + '">';
       }
+    }
+  }
+
+  /* Sync status (standalone only; the element is absent in VS Code) */
+  public setSyncStatus(msg: GG.ResponseSyncStatus) {
+    const elem = document.getElementById("syncStatus");
+    if (elem === null || msg.repo !== this.currentRepo) return;
+    elem.className = msg.level;
+    elem.textContent = msg.text;
+    elem.title = msg.text + " (" + new Date(msg.at).toLocaleTimeString() + ")";
+  }
+  private clearSyncStatus() {
+    const elem = document.getElementById("syncStatus");
+    if (elem !== null) {
+      elem.className = "";
+      elem.textContent = "";
+      elem.title = "";
     }
   }
 
@@ -1323,6 +1342,7 @@ window.addEventListener("message", (event) => {
       refreshGraphOrDisplayError(msg.status, l10n.unableToDeleteTag);
       break;
     case "sync":
+      document.getElementById("syncBtn")?.classList.remove("busy");
       refreshGraphOrDisplayError(msg.status, l10n.unableToSync);
       break;
     case "fetchAvatar":
@@ -1351,6 +1371,9 @@ window.addEventListener("message", (event) => {
       break;
     case "refresh":
       gitGraph.refresh(false);
+      break;
+    case "syncStatus":
+      gitGraph.setSyncStatus(msg);
       break;
     case "resetToCommit":
       refreshGraphOrDisplayError(msg.status, l10n.unableToReset);
