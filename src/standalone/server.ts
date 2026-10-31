@@ -126,10 +126,11 @@ export async function startServer(
   const autoSync = createAutoSync({
     getRepos: repoManager.getRepoPaths,
     gitPath: config.gitPath(),
-    intervalMs: Math.max(0, options.syncIntervalMin) * 60_000,
+    getIntervalMs: () => state.getSyncSettings().othersMin * 60_000,
     push: options.autoPush,
     log
   });
+  state.onSyncSettings(() => autoSync.reschedule());
 
   const httpServer = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
@@ -141,7 +142,8 @@ export async function startServer(
           pid: process.pid,
           rss: process.memoryUsage().rss,
           repos: repoManager.getRepoPaths().length,
-          uptimeSec: Math.round(process.uptime())
+          uptimeSec: Math.round(process.uptime()),
+          sync: state.getSyncSettings()
         });
         return;
       }

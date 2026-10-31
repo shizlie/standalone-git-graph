@@ -7,6 +7,10 @@
  * Live updates: subscribes to the shared `.git` watcher for the selected repo
  * (→ `refresh`), to repo-list changes (→ `loadRepos`), and to sync status
  * (→ `syncStatus`). The "Sync" button runs the safe sync in `autoSync.ts`.
+ *
+ * Auto-sync of the repo on screen: while this tab is visible, its repo is
+ * synced every `focusedSec` (saved settings, changed from the UI via
+ * `setSyncSettings` and pushed to every tab as `syncSettings`).
  */
 import {
   checkoutBranch,
@@ -44,13 +48,34 @@ export type MessageHandlerDeps = {
   autoSync: AutoSync;
 };
 
-/** Opening a repo triggers a background sync if the last one is older than this. */
-const SYNC_ON_OPEN_MAX_AGE_MS = 60_000;
+/** How often each tab checks whether its on-screen repo is due a sync. */
+const FOCUSED_CHECK_MS = 5_000;
 
 export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps) {
   const { config, gitClient, repoManager, state, watchHub, autoSync } = deps;
   let currentRepo: string | null = null;
   let unwatch: (() => void) | null = null;
+  let visible = true;
+
+  // Sync the repo on screen once its last sync is `focusedSec` old. The small
+  // slack keeps the 5 s check from slipping a whole extra tick each round.
+  const syncFocusedRepo = () => {
+    const ms = state.getSyncSettings().focusedSec * 1000;
+    if (visible && currentRepo && ms > 0) {
+      autoSync.syncIfStale(currentRepo, ms - FOCUSED_CHECK_MS / 2);
+    }
+  };
+  const focusedTimer = setInterval(syncFocusedRepo, FOCUSED_CHECK_MS);
+  const postSettings = () =>
+    bridge.post({ command: "syncSettings", ...state.getSyncSettings() } as ResponseMessage);
+  const offSettings = state.onSyncSettings(postSettings);
+  // Sent in reply to the tab's first request, when its message listener is surely ready.
+  let settingsSent = false;
+  const sendSettingsOnce = () => {
+    if (settingsSent) return;
+    settingsSent = true;
+    postSettings();
+  };
 
   const postStatus = (s: RepoSyncStatus) =>
     bridge.post({ command: "syncStatus", ...s } as ResponseMessage);
@@ -113,6 +138,7 @@ export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps
   });
 
   bridge.onMessage("loadBranches", async (msg) => {
+    sendSettingsOnce();
     bridge.post({
       command: "loadBranches",
       ...(await loadBranches(gitClient.getInstance(), {
@@ -145,8 +171,18 @@ export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps
     );
     const status = autoSync.getStatus(repo);
     if (status) postStatus(status);
-    autoSync.syncIfStale(repo, SYNC_ON_OPEN_MAX_AGE_MS);
+    syncFocusedRepo();
   }
+
+  bridge.onMessage("tabVisibility", (msg) => {
+    visible = msg.visible;
+    if (visible) syncFocusedRepo();
+  });
+
+  bridge.onMessage("setSyncSettings", (msg) => {
+    // Broadcast to every tab (this one included) via onSyncSettings.
+    state.setSyncSettings({ focusedSec: msg.focusedSec, othersMin: msg.othersMin });
+  });
 
   bridge.onMessage("selectRepo", (msg) => {
     if (msg.repo === currentRepo || !repoManager.getRepos()[msg.repo]) return;
@@ -169,6 +205,7 @@ export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps
         lastActiveRepo: lastActive
       } as ResponseMessage);
     }
+    sendSettingsOnce();
   });
 
   bridge.onMessage("saveRepoState", (msg) => {
@@ -177,6 +214,8 @@ export function registerMessageHandlers(bridge: Bridge, deps: MessageHandlerDeps
 
   return {
     dispose: () => {
+      clearInterval(focusedTimer);
+      offSettings();
       unwatch?.();
       unwatch = null;
       offStatus();

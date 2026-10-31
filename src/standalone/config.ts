@@ -15,8 +15,6 @@ export type StandaloneOptions = {
   repo: string[];
   /** Folder names (or root-relative paths) skipped while scanning roots. */
   exclude: string[];
-  /** Minutes between background syncs; 0 = off. */
-  syncIntervalMin: number;
   /** Let background sync push a default branch that is only ahead of its upstream. */
   autoPush: boolean;
   port: number;
@@ -76,7 +74,6 @@ export function defaultOptions(): StandaloneOptions {
     roots: [],
     repo: [],
     exclude: [...DEFAULT_EXCLUDES],
-    syncIntervalMin: 1,
     autoPush: true,
     port: DEFAULT_PORT,
     host: "127.0.0.1",

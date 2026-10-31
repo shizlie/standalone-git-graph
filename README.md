@@ -21,9 +21,10 @@ gitgraph restart     # after pulling/rebuilding gitgraph itself
 
 - Opens on http://127.0.0.1:1234 (next free port if taken).
 - Skips `workspace/`, `workspaces/`, `worktrees/` and `node_modules/` while scanning.
-- Every minute it fetches each repo and keeps `main` level with `origin/main`. It
-  fast-forwards when behind and the checkout is clean, and pushes when only ahead.
-  It never touches a diverged branch. `--no-auto-push` or `--sync-interval 0` to tone it down.
+- Every minute it syncs the repo you're looking at: fetches and keeps `main` level
+  with `origin/main`. It fast-forwards when behind and the checkout is clean, and
+  pushes when only ahead. It never touches a diverged branch. Other repos aren't
+  synced unless you turn that on. Change both with the **Auto-sync** button.
 
 ![demo](resources/demo.gif)
 
@@ -120,7 +121,16 @@ gitgraph restart        # restart with the same folders/options (e.g. after a re
 
 ### Auto sync
 
-Every minute (`--sync-interval <min>`, `0` = off), for each repo:
+Two rates, both set from the **Auto-sync: …** button at the top left of the UI
+and saved in `~/.gitgraph/state.json`:
+
+|                                                     | Default     | Choices                    |
+| --------------------------------------------------- | ----------- | -------------------------- |
+| **Repo on screen** — shown in a visible browser tab | every 1 min | off, 30 s, 1, 2, 5, 10 min |
+| **Other repos**                                     | off         | off, 5, 15, 30, 60 min     |
+
+A tab in another browser tab or a minimised window doesn't count as on screen,
+so a forgotten tab doesn't keep hitting GitHub. Each sync:
 
 1. `git fetch --all --prune`
 2. Keep the default branch (`main`, from `origin/HEAD`) level with `origin/main`:
@@ -130,7 +140,7 @@ Every minute (`--sync-interval <min>`, `0` = off), for each repo:
    - **ahead** → plain `git push` (never forced). `--no-auto-push` turns this off.
    - **diverged** → left alone; the UI shows a warning next to the Sync button.
 
-Opening a repo in the UI also syncs it if the last sync is over a minute old.
+Opening a repo, or coming back to its tab, syncs it if it's due.
 The **Sync** button does the same immediately, plus the current branch
 (fast-forward/push its upstream, or publish it with `-u` if it has none), and
 shows a dialog if anything needed your attention.
@@ -177,7 +187,6 @@ OPTIONS
                           scanning; repeatable. Replaces the default list:
                           workspace, workspaces, worktrees, node_modules
   --max-depth <n>         How deep to scan folders for repos (default 3)
-  --sync-interval <min>   Background sync every N minutes (default 1, 0 = off)
   --no-auto-push          Background sync only pulls; never pushes
   --port <n>              Port (default 1234; moves up if taken; 0 = any)
   --host <addr>           Bind address (default 127.0.0.1)

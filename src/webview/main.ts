@@ -22,6 +22,8 @@ class GitGraphView {
   private gitBranchHead: string | null = null;
   /** Branch → path of the linked worktree it is checked out in. */
   private gitWorktrees: { [branch: string]: string } = {};
+  /** Standalone only: auto-sync settings, null until the server sends them. */
+  private syncSettings: GG.SyncSettings | null = null;
   private commits: GitCommitNode[] = [];
   private commitHead: string | null = null;
   private commitLookup: { [hash: string]: number } = {};
@@ -92,6 +94,9 @@ class GitGraphView {
       document.getElementById("syncBtn")!.classList.add("busy");
       sendMessage({ command: "sync", repo: this.currentRepo! });
     });
+    document
+      .getElementById("autoSyncBtn")
+      ?.addEventListener("click", () => this.showAutoSyncSettings());
     const blinkBtn = document.getElementById("blinkHeadBtn");
     if (blinkBtn) {
       blinkBtn.addEventListener("click", () => {
@@ -309,6 +314,51 @@ class GitGraphView {
     elem.className = msg.level;
     elem.textContent = msg.text;
     elem.title = msg.text + " (" + new Date(msg.at).toLocaleTimeString() + ")";
+  }
+  public setSyncSettings(s: GG.SyncSettings) {
+    this.syncSettings = { focusedSec: s.focusedSec, othersMin: s.othersMin };
+    const elem = document.getElementById("autoSyncBtn");
+    if (elem === null) return;
+    const focused = formatSyncInterval(s.focusedSec);
+    elem.textContent = l10n.autoSyncButton.replace("{0}", focused);
+    elem.title = l10n.autoSyncButtonTitle
+      .replace("{0}", focused)
+      .replace("{1}", formatSyncInterval(s.othersMin * 60));
+    elem.className = "roundedBtn" + (s.focusedSec > 0 ? "" : " off");
+  }
+  private showAutoSyncSettings() {
+    const s = this.syncSettings;
+    if (s === null) return;
+    const choices = (presets: number[], current: number) =>
+      (presets.indexOf(current) === -1 ? presets.concat(current) : presets)
+        .toSorted((a, b) => a - b)
+        .map((sec) => ({ name: formatSyncInterval(sec), value: String(sec) }));
+    const othersSec = s.othersMin * 60;
+    showFormDialog(
+      l10n.autoSyncDialogMessage,
+      [
+        {
+          type: "select",
+          name: l10n.autoSyncFocused,
+          options: choices([0, 30, 60, 120, 300, 600], s.focusedSec),
+          default: String(s.focusedSec)
+        },
+        {
+          type: "select",
+          name: l10n.autoSyncOthers,
+          options: choices([0, 300, 900, 1800, 3600], othersSec),
+          default: String(othersSec)
+        }
+      ],
+      l10n.autoSyncSave,
+      (values) =>
+        sendMessage({
+          command: "setSyncSettings",
+          focusedSec: parseInt(values[0], 10),
+          othersMin: Math.round(parseInt(values[1], 10) / 60)
+        }),
+      null
+    );
   }
   private clearSyncStatus() {
     const elem = document.getElementById("syncStatus");
@@ -1424,6 +1474,9 @@ window.addEventListener("message", (event) => {
     case "syncStatus":
       gitGraph.setSyncStatus(msg);
       break;
+    case "syncSettings":
+      gitGraph.setSyncSettings(msg);
+      break;
     case "resetToCommit":
       refreshGraphOrDisplayError(msg.status, l10n.unableToReset);
       break;
@@ -1690,6 +1743,14 @@ function hideContextMenu() {
     contextMenuSource.classList.remove("contextMenuActive");
     contextMenuSource = null;
   }
+}
+
+/** 0 → "off", 30 → "30s", 120 → "2m", 3600 → "1h". */
+function formatSyncInterval(sec: number) {
+  if (sec <= 0) return l10n.autoSyncOff;
+  if (sec % 3600 === 0) return sec / 3600 + "h";
+  if (sec % 60 === 0) return sec / 60 + "m";
+  return sec + "s";
 }
 
 /* Dialogs */

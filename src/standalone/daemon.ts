@@ -27,6 +27,7 @@ export type Health = {
   rss?: number;
   repos?: number;
   uptimeSec?: number;
+  sync?: { focusedSec: number; othersMin: number };
 };
 
 const HEAP_LIMIT_MB = 256;

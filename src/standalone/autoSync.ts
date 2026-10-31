@@ -1,6 +1,8 @@
 /**
- * Periodic background sync for every watched repo, plus the manual "Sync"
- * button. Each run: `git fetch --all --prune`, then keep the default branch
+ * Auto-sync for watched repos, plus the manual "Sync" button. Two rates:
+ * the repo shown on screen (driven per tab by `messageHandler.ts` through
+ * `syncIfStale`), and a background loop over every repo (`getIntervalMs`,
+ * off by default; re-read after each run and on `reschedule()`). Each run: `git fetch --all --prune`, then keep the default branch
  * (e.g. `main`) level with its upstream using the safe rules in
  * `backend/actions/branchSync.ts`. The manual button also syncs the
  * currently checked-out branch.
@@ -27,8 +29,8 @@ export type RepoSyncStatus = { repo: string; level: SyncLevel; text: string; at:
 export type AutoSyncOptions = {
   getRepos: () => string[];
   gitPath: string;
-  /** 0 disables the periodic timer (manual sync still works). */
-  intervalMs: number;
+  /** Background loop over all repos; 0 = off (manual and on-screen sync still work). */
+  getIntervalMs: () => number;
   push: boolean;
   log: (line: string) => void;
 };
@@ -38,6 +40,8 @@ export type AutoSync = {
   syncNow: (repo: string) => Promise<void>;
   /** Sync `repo` in the background if its last sync is older than `maxAgeMs`. */
   syncIfStale: (repo: string, maxAgeMs: number) => void;
+  /** Apply a changed `getIntervalMs()` now instead of after the current wait. */
+  reschedule: () => void;
   getStatus: (repo: string) => RepoSyncStatus | null;
   onStatus: (cb: (s: RepoSyncStatus) => void) => () => void;
   stop: () => void;
@@ -131,14 +135,30 @@ export function createAutoSync(opts: AutoSyncOptions): AutoSync {
     return p;
   }
 
-  async function tick() {
+  let ticking = false;
+  function schedule(delayMs: number) {
+    if (timer) clearTimeout(timer);
     timer = null;
-    const repos = opts.getRepos();
-    await evalPromises(repos, MAX_PARALLEL_REPOS, (r) => syncRepo(r, false)).catch(() => {});
-    if (!stopped && opts.intervalMs > 0) timer = setTimeout(() => void tick(), opts.intervalMs);
+    if (!stopped && !ticking && opts.getIntervalMs() > 0) {
+      timer = setTimeout(() => void tick(), delayMs);
+    }
   }
 
-  if (opts.intervalMs > 0) timer = setTimeout(() => void tick(), FIRST_RUN_DELAY_MS);
+  async function tick() {
+    timer = null;
+    ticking = true;
+    // Skip repos synced recently (e.g. the one on screen), so they aren't hit twice.
+    const maxAge = opts.getIntervalMs() / 2;
+    const repos = opts.getRepos().filter((r) => {
+      const s = statuses.get(r);
+      return !s || Date.now() - s.at > maxAge;
+    });
+    await evalPromises(repos, MAX_PARALLEL_REPOS, (r) => syncRepo(r, false)).catch(() => {});
+    ticking = false;
+    schedule(opts.getIntervalMs());
+  }
+
+  schedule(FIRST_RUN_DELAY_MS);
 
   return {
     async syncNow(repo) {
@@ -149,8 +169,12 @@ export function createAutoSync(opts: AutoSyncOptions): AutoSync {
     },
     syncIfStale(repo, maxAgeMs) {
       const s = statuses.get(repo);
-      if (opts.intervalMs === 0 || running.has(repo)) return;
+      if (running.has(repo)) return;
       if (!s || Date.now() - s.at > maxAgeMs) void syncRepo(repo, false);
+    },
+    reschedule() {
+      const ms = opts.getIntervalMs();
+      schedule(Math.min(ms, FIRST_RUN_DELAY_MS));
     },
     getStatus: (repo) => statuses.get(repo) ?? null,
     onStatus(cb) {

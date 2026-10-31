@@ -146,7 +146,7 @@ describe("autoSync.syncNow", () => {
     const sync = createAutoSync({
       getRepos: () => [local],
       gitPath: "git",
-      intervalMs: 0,
+      getIntervalMs: () => 0,
       push: true,
       log: () => {}
     });
@@ -165,7 +165,7 @@ describe("autoSync.syncNow", () => {
     const sync = createAutoSync({
       getRepos: () => [local],
       gitPath: "git",
-      intervalMs: 0,
+      getIntervalMs: () => 0,
       push: true,
       log: () => {}
     });
@@ -182,13 +182,63 @@ describe("autoSync.syncNow", () => {
     const sync = createAutoSync({
       getRepos: () => [local],
       gitPath: "git",
-      intervalMs: 0,
+      getIntervalMs: () => 0,
       push: true,
       log: () => {}
     });
 
     await sync.syncNow(local);
     expect(git(["rev-parse", "feature"], origin)).toBe(git(["rev-parse", "feature"], local));
+    sync.stop();
+  });
+});
+
+async function waitFor(cond: () => boolean, ms = 8000) {
+  const end = Date.now() + ms;
+  // oxlint-disable-next-line no-await-in-loop -- polling on purpose
+  while (!cond() && Date.now() < end) await new Promise((r) => setTimeout(r, 25));
+  return cond();
+}
+
+describe("autoSync background loop", () => {
+  test("stays idle while off, and starts as soon as it is turned on", async () => {
+    const { local, other } = setup();
+    commit(other, "b", "remote work");
+    git(["push", "-q"], other);
+    const loop = { intervalMs: 0 };
+    const sync = createAutoSync({
+      getRepos: () => [local],
+      gitPath: "git",
+      getIntervalMs: () => loop.intervalMs,
+      push: true,
+      log: () => {}
+    });
+
+    await new Promise((r) => setTimeout(r, 200));
+    expect(sync.getStatus(local)).toBeNull();
+
+    loop.intervalMs = 100;
+    sync.reschedule();
+    expect(await waitFor(() => sync.getStatus(local)?.text.includes("pulled 1") ?? false)).toBe(
+      true
+    );
+    sync.stop();
+  });
+
+  test("syncIfStale skips a repo synced recently", async () => {
+    const { local } = setup();
+    const sync = createAutoSync({
+      getRepos: () => [local],
+      gitPath: "git",
+      getIntervalMs: () => 0,
+      push: true,
+      log: () => {}
+    });
+    await sync.syncNow(local);
+    const at = sync.getStatus(local)!.at;
+    sync.syncIfStale(local, 60_000);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(sync.getStatus(local)!.at).toBe(at);
     sync.stop();
   });
 });

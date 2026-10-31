@@ -419,8 +419,8 @@ svg.fileIcon {
   opacity: 0.6;
   pointer-events: none;
 }
-/* Standalone: last sync result, left side of the controls bar */
-#syncStatus {
+/* Standalone: auto-sync settings chip + last sync result, left side of the controls bar */
+#syncInfo {
   position: absolute;
   left: 8px;
   top: 50%;
@@ -428,11 +428,31 @@ svg.fileIcon {
   height: 22px;
   line-height: 22px;
   max-width: calc(50% - 260px);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   white-space: nowrap;
   font-weight: 400;
   font-size: 12px;
+}
+#autoSyncBtn {
+  flex: none;
+  height: 20px;
+  line-height: 20px;
+  padding: 0 9px;
+  border-radius: 11px;
+  font-size: 12px;
+}
+#autoSyncBtn:empty {
+  display: none;
+}
+#autoSyncBtn.off {
+  opacity: 0.6;
+}
+#syncStatus {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   opacity: 0.75;
 }
 #syncStatus.warn {

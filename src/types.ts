@@ -48,6 +48,29 @@ export type ResponseFetchAvatar = {
   image: string;
 };
 
+/** Standalone only: how often auto-sync runs. 0 = off. */
+export type SyncSettings = {
+  /** Seconds between syncs of the repo shown in a visible browser tab. */
+  focusedSec: number;
+  /** Minutes between syncs of every other repo. */
+  othersMin: number;
+};
+
+/** Standalone only: the browser tab was shown or hidden. */
+export type RequestTabVisibility = {
+  command: "tabVisibility";
+  visible: boolean;
+};
+
+/** Standalone only: change the auto-sync settings (saved, applied to every tab). */
+export type RequestSetSyncSettings = {
+  command: "setSyncSettings";
+} & SyncSettings;
+
+export type ResponseSyncSettings = {
+  command: "syncSettings";
+} & SyncSettings;
+
 export type RequestSelectRepo = {
   command: "selectRepo";
   repo: string;
@@ -111,6 +134,8 @@ export type RequestMessage =
   | QueryRequest
   | RequestFetchAvatar
   | RequestSelectRepo
+  | RequestTabVisibility
+  | RequestSetSyncSettings
   | RequestLoadRepos
   | RequestSaveRepoState
   | RequestCopyToClipboard
@@ -124,4 +149,5 @@ export type ResponseMessage =
   | ResponseCopyToClipboard
   | ResponseViewDiff
   | ResponseRefresh
-  | ResponseSyncStatus;
+  | ResponseSyncStatus
+  | ResponseSyncSettings;

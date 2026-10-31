@@ -30,7 +30,8 @@ import {
   spawnDaemon,
   stopDaemon,
   tailLog,
-  writeDaemonFile
+  writeDaemonFile,
+  type Health
 } from "@/standalone/daemon";
 import { scanForRepos } from "@/standalone/repoManager";
 import { startServer } from "@/standalone/server";
@@ -56,7 +57,6 @@ OPTIONS
                           scanning; repeatable. Replaces the default list:
                           workspace, workspaces, worktrees, node_modules
   --max-depth <n>         How deep to scan folders for repos (default 3)
-  --sync-interval <min>   Background sync every N minutes (default 1, 0 = off)
   --no-auto-push          Background sync only pulls; never pushes
   --port <n>              Port (default 1234; moves up if taken; 0 = any)
   --host <addr>           Bind address (default 127.0.0.1)
@@ -113,6 +113,18 @@ function openBrowser(url: string): void {
   }
 }
 
+function describeSync(s: Health["sync"]): string {
+  if (!s) return "?";
+  const focused =
+    s.focusedSec <= 0
+      ? "off"
+      : s.focusedSec % 60 === 0
+        ? `every ${s.focusedSec / 60} min`
+        : `every ${s.focusedSec} s`;
+  const others = s.othersMin <= 0 ? "off" : `every ${s.othersMin} min`;
+  return `repo on screen ${focused}, other repos ${others} (change in the UI)`;
+}
+
 function parseColourList(raw: string): string[] {
   return raw
     .split(",")
@@ -138,7 +150,6 @@ function parseCli(argv: string[]): Parsed {
     options: {
       repo: { type: "string", multiple: true },
       exclude: { type: "string", multiple: true },
-      "sync-interval": { type: "string" },
       "no-auto-push": { type: "boolean" },
       port: { type: "string" },
       host: { type: "string" },
@@ -185,10 +196,6 @@ function parseCli(argv: string[]): Parsed {
     serverFlagsGiven = true;
   };
   if (values.exclude) set("exclude", values.exclude);
-  if (values["sync-interval"] !== undefined) {
-    const n = Number(values["sync-interval"]);
-    set("syncIntervalMin", Number.isFinite(n) && n >= 0 ? n : opts.syncIntervalMin);
-  }
   if (values["no-auto-push"]) set("autoPush", false);
   if (values.port !== undefined) set("port", parseInt(values.port, 10) || 0);
   if (values.host) set("host", values.host);
@@ -429,7 +436,7 @@ async function main() {
           `  pid ${info.pid}, ${mb} RAM, up ${formatUptime(health.uptimeSec ?? 0)}, ${health.repos ?? "?"} repos`,
           ...o.roots.map((r) => `  folder: ${r}`),
           ...o.repo.map((r) => `  repo:   ${r}`),
-          `  sync: ${o.syncIntervalMin > 0 ? `every ${o.syncIntervalMin} min${o.autoPush ? "" : " (no push)"}` : "off"}`,
+          `  sync: ${describeSync(health.sync)}${o.autoPush ? "" : " (no push)"}`,
           `  log:  ${logFile()}`,
           ""
         ].join("\n")

@@ -16,7 +16,8 @@
  *
  * When the tab becomes visible again it asks the webview for a soft refresh —
  * this picks up working-tree edits, which the server's `.git` watcher can't see,
- * without any polling.
+ * without any polling. It also tells the server whether the tab is visible:
+ * only the repo in a visible tab gets the frequent "on screen" auto-sync.
  *
  * Two commands are intercepted client-side and never forwarded to the server,
  * because only the browser can fulfil them:
@@ -100,7 +101,11 @@ const GitGraphBridge = (() => {
   function connect() {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(`${proto}//${window.location.host}/ws`);
-    ws.addEventListener("open", flush);
+    ws.addEventListener("open", () => {
+      // Each (re)connection gets a fresh server-side handler; tell it our visibility first.
+      queue.unshift(visibilityMessage());
+      flush();
+    });
     ws.addEventListener("message", (event) => {
       let msg: unknown;
       try {
@@ -152,6 +157,11 @@ const GitGraphBridge = (() => {
 
 GitGraphBridge.connect();
 
+function visibilityMessage() {
+  return { command: "tabVisibility", visible: document.visibilityState === "visible" };
+}
+
 document.addEventListener("visibilitychange", () => {
+  GitGraphBridge.send(visibilityMessage());
   if (document.visibilityState === "visible") dispatch({ command: "refresh" });
 });
