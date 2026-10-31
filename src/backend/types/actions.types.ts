@@ -8,7 +8,12 @@ type ActionPayloads = {
   checkoutCommit: { commitHash: string };
   cherrypickCommit: { commitHash: string; parentIndex: number };
   createBranch: { commitHash: string; branchName: string };
-  deleteBranch: { branchName: string; forceDelete: boolean };
+  deleteBranch: {
+    branchName: string;
+    forceDelete: boolean;
+    /** Also remove the linked worktree that has the branch checked out. */
+    deleteWorktree?: boolean;
+  };
   deleteTag: { tagName: string };
   mergeBranch: { branchName: string; createNewCommit: boolean };
   mergeCommit: { commitHash: string; createNewCommit: boolean };

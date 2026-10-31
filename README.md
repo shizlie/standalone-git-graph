@@ -21,7 +21,7 @@ gitgraph restart     # after pulling/rebuilding gitgraph itself
 
 - Opens on http://127.0.0.1:1234 (next free port if taken).
 - Skips `workspace/`, `workspaces/`, `worktrees/` and `node_modules/` while scanning.
-- Every 5 min it fetches each repo and keeps `main` level with `origin/main`. It
+- Every minute it fetches each repo and keeps `main` level with `origin/main`. It
   fast-forwards when behind and the checkout is clean, and pushes when only ahead.
   It never touches a diverged branch. `--no-auto-push` or `--sync-interval 0` to tone it down.
 
@@ -33,7 +33,10 @@ gitgraph restart     # after pulling/rebuilding gitgraph itself
 - **Commit details** — click any commit → message, author, parents, file tree
   with add/delete counts
 - **Diffs** — click a file in commit details → colored unified diff in a new tab
-- **Branch actions** — create, checkout, rename, delete, merge
+- **Branch actions** — create, checkout, rename, delete, merge. Deleting a branch
+  that is checked out in another worktree offers to remove that worktree too
+  (refused if it has uncommitted files or the branch isn't merged, unless you
+  tick Force Delete — which then asks a second time, since those changes are lost for good)
 - **Tag actions** — add, delete, push
 - **Commit actions** — checkout, cherry-pick, revert, reset (soft/mixed/hard)
 - **Copy to clipboard** — commit hash, tag name, branch name
@@ -117,7 +120,7 @@ gitgraph restart        # restart with the same folders/options (e.g. after a re
 
 ### Auto sync
 
-Every 5 minutes (`--sync-interval <min>`, `0` = off), for each repo:
+Every minute (`--sync-interval <min>`, `0` = off), for each repo:
 
 1. `git fetch --all --prune`
 2. Keep the default branch (`main`, from `origin/HEAD`) level with `origin/main`:
@@ -174,7 +177,7 @@ OPTIONS
                           scanning; repeatable. Replaces the default list:
                           workspace, workspaces, worktrees, node_modules
   --max-depth <n>         How deep to scan folders for repos (default 3)
-  --sync-interval <min>   Background sync every N minutes (default 5, 0 = off)
+  --sync-interval <min>   Background sync every N minutes (default 1, 0 = off)
   --no-auto-push          Background sync only pulls; never pushes
   --port <n>              Port (default 1234; moves up if taken; 0 = any)
   --host <addr>           Bind address (default 127.0.0.1)

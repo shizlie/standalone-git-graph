@@ -7,7 +7,14 @@ type QueryPayloads = {
   };
   loadBranches: {
     request: { showRemoteBranches: boolean; hard: boolean };
-    response: { branches: string[]; head: string | null; hard: boolean; isRepo: boolean };
+    response: {
+      branches: string[];
+      head: string | null;
+      hard: boolean;
+      isRepo: boolean;
+      /** Branch → path, for branches checked out in another linked (non-main) worktree. */
+      worktrees: { [branch: string]: string };
+    };
   };
   loadCommits: {
     request: {

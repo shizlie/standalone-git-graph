@@ -2,6 +2,7 @@ import type { SimpleGit } from "simple-git";
 
 import type { QueryResult } from "@/backend/types";
 import { isGitRepository } from "@/backend/utils/git";
+import { parseWorktreeList } from "@/backend/utils/worktrees";
 
 type LoadBranchesInput = {
   showRemoteBranches: boolean;
@@ -32,6 +33,24 @@ export async function loadBranches(
   }
 
   const isRepo = error ? await isGitRepository(currentRepo, gitPath) : true;
+  const worktrees = error ? {} : await linkedWorktrees(git, head);
 
-  return { branches, head, hard, isRepo };
+  return { branches, head, hard, isRepo, worktrees };
+}
+
+/** Branches checked out in a linked worktree (not the main one, not the current HEAD). */
+async function linkedWorktrees(
+  git: SimpleGit,
+  head: string | null
+): Promise<{ [branch: string]: string }> {
+  const out: { [branch: string]: string } = {};
+  try {
+    const list = parseWorktreeList(await git.raw(["worktree", "list", "--porcelain"]));
+    for (const w of list) {
+      if (!w.isMain && w.branch && w.branch !== head) out[w.branch] = w.path;
+    }
+  } catch {
+    // Old git or unreadable worktree list: just don't offer worktree removal.
+  }
+  return out;
 }

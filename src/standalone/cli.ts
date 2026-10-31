@@ -56,7 +56,7 @@ OPTIONS
                           scanning; repeatable. Replaces the default list:
                           workspace, workspaces, worktrees, node_modules
   --max-depth <n>         How deep to scan folders for repos (default 3)
-  --sync-interval <min>   Background sync every N minutes (default 5, 0 = off)
+  --sync-interval <min>   Background sync every N minutes (default 1, 0 = off)
   --no-auto-push          Background sync only pulls; never pushes
   --port <n>              Port (default 1234; moves up if taken; 0 = any)
   --host <addr>           Bind address (default 127.0.0.1)

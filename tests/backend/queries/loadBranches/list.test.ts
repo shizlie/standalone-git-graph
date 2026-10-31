@@ -1,6 +1,7 @@
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
+import * as path from "node:path";
 
 import { simpleGit } from "simple-git";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -56,7 +57,8 @@ describe("loadBranches", () => {
       branches: expect.any(Array),
       head: "main",
       hard: false,
-      isRepo: true
+      isRepo: true,
+      worktrees: {}
     });
     expect(result.branches[0]).toBe("main");
   });
@@ -82,7 +84,8 @@ describe("loadBranches", () => {
       branches: expect.any(Array),
       head: null,
       hard: false,
-      isRepo: true
+      isRepo: true,
+      worktrees: {}
     });
     expect(result.branches.length).toBeGreaterThan(0);
   });
@@ -98,7 +101,8 @@ describe("loadBranches", () => {
       branches: expect.any(Array),
       head: expect.any(String),
       hard: false,
-      isRepo: true
+      isRepo: true,
+      worktrees: {}
     });
     expect(result.branches.some((b) => b.startsWith("remotes/"))).toBe(false);
   });
@@ -114,7 +118,8 @@ describe("loadBranches", () => {
       branches: expect.any(Array),
       head: expect.any(String),
       hard: false,
-      isRepo: true
+      isRepo: true,
+      worktrees: {}
     });
     expect(result.branches.some((b) => b.startsWith("remotes/origin/"))).toBe(true);
   });
@@ -130,7 +135,8 @@ describe("loadBranches", () => {
       branches: [],
       head: null,
       hard: false,
-      isRepo: false
+      isRepo: false,
+      worktrees: {}
     });
   });
 
@@ -145,7 +151,27 @@ describe("loadBranches", () => {
       branches: expect.any(Array),
       head: expect.any(String),
       hard: true,
-      isRepo: true
+      isRepo: true,
+      worktrees: {}
     });
+  });
+
+  it("lists branches checked out in linked worktrees, but not the main one", async () => {
+    const wt = fs.mkdtempSync(path.join(os.tmpdir(), "ngg-lb-wt-"));
+    fs.rmSync(wt, { recursive: true });
+    git(["worktree", "add", "-b", "in-worktree", wt], simpleRepo);
+    try {
+      const result = await loadBranches(simpleGit(simpleRepo), {
+        showRemoteBranches: false,
+        hard: false,
+        currentRepo: simpleRepo,
+        gitPath: "git"
+      });
+      expect(Object.keys(result.worktrees)).toEqual(["in-worktree"]);
+      expect(fs.realpathSync(result.worktrees["in-worktree"])).toBe(fs.realpathSync(wt));
+    } finally {
+      git(["worktree", "remove", "--force", wt], simpleRepo);
+      git(["branch", "-D", "in-worktree"], simpleRepo);
+    }
   });
 });

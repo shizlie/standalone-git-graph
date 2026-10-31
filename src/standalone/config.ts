@@ -76,7 +76,7 @@ export function defaultOptions(): StandaloneOptions {
     roots: [],
     repo: [],
     exclude: [...DEFAULT_EXCLUDES],
-    syncIntervalMin: 5,
+    syncIntervalMin: 1,
     autoPush: true,
     port: DEFAULT_PORT,
     host: "127.0.0.1",

@@ -15,6 +15,8 @@ import * as child_process from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { parseWorktreeList } from "@/backend/utils/worktrees";
+
 export type SyncOutcome =
   | { kind: "in-sync" }
   | { kind: "fast-forwarded"; count: number }
@@ -150,12 +152,7 @@ export async function getDefaultBranch(
 export async function worktreeForBranch(git: GitRunner, branch: string): Promise<string | null> {
   const out = await tryGit(git, ["worktree", "list", "--porcelain"]);
   if (!out) return null;
-  let current: string | null = null;
-  for (const line of out.split("\n")) {
-    if (line.startsWith("worktree ")) current = line.slice("worktree ".length);
-    else if (line === `branch refs/heads/${branch}` && current) return current;
-  }
-  return null;
+  return parseWorktreeList(out).find((w) => w.branch === branch)?.path ?? null;
 }
 
 const IN_PROGRESS_MARKERS = [

@@ -20,6 +20,8 @@ class GitGraphView {
   private gitRepos: GG.GitRepoSet;
   private gitBranches: string[] = [];
   private gitBranchHead: string | null = null;
+  /** Branch → path of the linked worktree it is checked out in. */
+  private gitWorktrees: { [branch: string]: string } = {};
   private commits: GitCommitNode[] = [];
   private commitHead: string | null = null;
   private commitLookup: { [hash: string]: number } = {};
@@ -110,7 +112,7 @@ class GitGraphView {
         this.maxCommits = prevState.maxCommits;
         this.expandedCommit = prevState.expandedCommit;
         this.avatars = prevState.avatars;
-        this.loadBranches(prevState.gitBranches, prevState.gitBranchHead, true, true);
+        this.loadBranches(prevState.gitBranches, prevState.gitBranchHead, {}, true, true);
         this.loadCommits(
           prevState.commits,
           prevState.commitHead,
@@ -158,9 +160,12 @@ class GitGraphView {
   public loadBranches(
     branchOptions: string[],
     branchHead: string | null,
+    worktrees: { [branch: string]: string },
     hard: boolean,
     isRepo: boolean
   ) {
+    // Only read when the delete dialog opens, so no re-render needed.
+    this.gitWorktrees = worktrees;
     if (!isRepo) {
       this.triggerLoadBranchesCallback(false, isRepo);
       return;
@@ -863,20 +868,64 @@ class GitGraphView {
               {
                 title: l10n.deleteBranch + ELLIPSIS,
                 onClick: () => {
-                  showCheckboxDialog(
-                    l10n.dialogDeleteConfirm
-                      .replace("{0}", l10n.labelBranch)
-                      .replace("{1}", "<b><i>" + escapeHtml(refName) + "</i></b>"),
-                    l10n.dialogDeleteForceDelete,
-                    false,
+                  const message = l10n.dialogDeleteConfirm
+                    .replace("{0}", l10n.labelBranch)
+                    .replace("{1}", "<b><i>" + escapeHtml(refName) + "</i></b>");
+                  const worktree = this.gitWorktrees[refName];
+                  const send = (forceDelete: boolean, deleteWorktree: boolean) =>
+                    sendMessage({
+                      command: "deleteBranch",
+                      repo: this.currentRepo!,
+                      branchName: refName,
+                      forceDelete: forceDelete,
+                      deleteWorktree: deleteWorktree
+                    });
+                  if (worktree === undefined) {
+                    showCheckboxDialog(
+                      message,
+                      l10n.dialogDeleteForceDelete,
+                      false,
+                      l10n.deleteBranch,
+                      (forceDelete) => send(forceDelete, false),
+                      null
+                    );
+                    return;
+                  }
+                  showFormDialog(
+                    message,
+                    [
+                      {
+                        type: "checkbox",
+                        name: l10n.dialogDeleteRemoveWorktree.replace(
+                          "{0}",
+                          "<code>" + escapeHtml(worktree) + "</code>"
+                        ),
+                        value: true
+                      },
+                      { type: "checkbox", name: l10n.dialogDeleteForceDelete, value: false }
+                    ],
                     l10n.deleteBranch,
-                    (forceDelete) => {
-                      sendMessage({
-                        command: "deleteBranch",
-                        repo: this.currentRepo!,
-                        branchName: refName,
-                        forceDelete: forceDelete
-                      });
+                    (values) => {
+                      const deleteWorktree = values[0] === "checked";
+                      const forceDelete = values[1] === "checked";
+                      if (!(deleteWorktree && forceDelete)) {
+                        send(forceDelete, deleteWorktree);
+                        return;
+                      }
+                      // Second opt-in: a forced worktree removal can throw away work for good.
+                      showDialog(
+                        svgIcons.alert +
+                          l10n.dialogDeleteForceWorktreeWarning
+                            .replace("{0}", "<code>" + escapeHtml(worktree) + "</code>")
+                            .replace("{1}", "<b><i>" + escapeHtml(refName) + "</i></b>"),
+                        l10n.dialogDeleteForceWorktreeConfirm,
+                        l10n.dialogCancel,
+                        () => {
+                          hideDialog();
+                          send(true, true);
+                        },
+                        null
+                      );
                     },
                     null
                   );
@@ -1349,7 +1398,7 @@ window.addEventListener("message", (event) => {
       gitGraph.loadAvatar(msg.email, msg.image);
       break;
     case "loadBranches":
-      gitGraph.loadBranches(msg.branches, msg.head, msg.hard, msg.isRepo);
+      gitGraph.loadBranches(msg.branches, msg.head, msg.worktrees ?? {}, msg.hard, msg.isRepo);
       break;
     case "loadCommits":
       gitGraph.loadCommits(msg.commits, msg.head, msg.moreCommitsAvailable, msg.hard);

@@ -52,7 +52,8 @@ describe("webview rendering", () => {
       branches: ["main"],
       head: "main",
       hard: true,
-      isRepo: true
+      isRepo: true,
+      worktrees: {}
     });
     receive({
       command: "loadCommits",
